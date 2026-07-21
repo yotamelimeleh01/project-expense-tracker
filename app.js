@@ -1,6 +1,6 @@
 "use strict";
 
-const STORAGE_KEY = "mpet.expenses.v2";
+const STORAGE_KEY = "mpet.expenses.v3";
 
 // ---------- State ----------
 let expenses = load();
@@ -84,13 +84,11 @@ function renderReconcileBanner(t) {
 }
 
 function groupKey(e, mode) {
-  if (mode === "bucket") return e.bucket || "Uncategorized";
   if (mode === "paidBy") return PARTNERS[e.paidBy] || "Unknown";
   return e.section || "Uncategorized";
 }
 
 function orderedGroups(mode) {
-  if (mode === "bucket") return BUCKETS.slice();
   if (mode === "paidBy") return [PARTNERS.A, PARTNERS.Z];
   return SECTIONS.slice();
 }
@@ -127,7 +125,6 @@ function renderGroups() {
           <tr>
             <th class="col-date">Date</th>
             <th>Description / Payable To</th>
-            <th class="col-category">Category</th>
             <th>Paid By</th>
             <th class="amount">Amount</th>
             <th class="actions-col"></th>
@@ -154,7 +151,6 @@ function rowHtml(e) {
     <tr>
       <td class="col-date">${escapeHtml(e.date || "—")}</td>
       <td>${escapeHtml(e.description)}</td>
-      <td class="col-category">${escapeHtml(e.category || "")}</td>
       <td><span class="${badgeClass}">${escapeHtml(PARTNERS[e.paidBy] || e.paidBy)}</span></td>
       <td class="amount">${money(e.amount)}</td>
       <td class="actions-cell">
@@ -182,12 +178,6 @@ function openModal(id) {
   document.getElementById("f-description").value = existing ? existing.description : "";
 
   fillSelect(
-    document.getElementById("f-category"),
-    CATEGORIES.map((c) => ({ value: c, label: c })),
-    existing ? existing.category : CATEGORIES[0]
-  );
-
-  fillSelect(
     document.getElementById("f-paidBy"),
     [{ value: "Z", label: PARTNERS.Z }, { value: "A", label: PARTNERS.A }],
     existing ? existing.paidBy : "Z"
@@ -195,12 +185,7 @@ function openModal(id) {
   fillSelect(
     document.getElementById("f-section"),
     SECTIONS.map((s) => ({ value: s, label: s })),
-    existing ? existing.section : SECTIONS[4]
-  );
-  fillSelect(
-    document.getElementById("f-bucket"),
-    BUCKETS.map((b) => ({ value: b, label: b })),
-    existing ? existing.bucket : BUCKETS[4]
+    existing ? existing.section : SECTIONS[2]
   );
 
   document.getElementById("modal").classList.remove("hidden");
@@ -221,10 +206,8 @@ function saveFromForm() {
     date: document.getElementById("f-date").value,
     amount: parseFloat(document.getElementById("f-amount").value) || 0,
     description: document.getElementById("f-description").value.trim(),
-    category: document.getElementById("f-category").value.trim(),
     paidBy: document.getElementById("f-paidBy").value,
     section: document.getElementById("f-section").value,
-    bucket: document.getElementById("f-bucket").value,
   };
 
   if (id) {
@@ -249,15 +232,13 @@ function removeExpense(id) {
 
 // ---------- Import / Export ----------
 function exportCsv() {
-  const headers = ["Date", "Description", "Category", "Section", "Bucket", "Paid By", "Amount"];
+  const headers = ["Date", "Description", "Section", "Paid By", "Amount"];
   const lines = [headers.join(",")];
   for (const e of expenses) {
     const row = [
       e.date,
       e.description,
-      e.category,
       e.section,
-      e.bucket,
       PARTNERS[e.paidBy] || e.paidBy,
       (Number(e.amount) || 0).toFixed(2),
     ].map((v) => `"${String(v ?? "").replace(/"/g, '""')}"`);

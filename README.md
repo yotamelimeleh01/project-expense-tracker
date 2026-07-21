@@ -13,7 +13,7 @@ GitHub Pages and works on any device with a browser.
 - **Reconciliation banner** — flags any gap between the live total and the
   original PDF header total.
 - **Add / edit / delete** expenses via a simple form.
-- **Group by** report section, master bucket, or partner, each with subtotals.
+- **Group by** section or partner, each with subtotals.
 - **CSV export** and **print / save-to-PDF** to reproduce the original document.
 - **Backup / Restore JSON** to move data between devices.
 - **Reset to PDF** to restore the original 24 seeded line items.
