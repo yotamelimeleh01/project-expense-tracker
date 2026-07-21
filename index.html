@@ -1,0 +1,109 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Master Project Expense Tracker</title>
+  <link rel="stylesheet" href="styles.css" />
+</head>
+<body>
+  <header class="topbar">
+    <div class="topbar-inner">
+      <h1>Master Project Expense Tracker</h1>
+      <p class="subtitle">Itemized Renovation, Closing, Insurance &amp; Operational Outlays</p>
+      <div class="meta-row">
+        <span><strong>Property:</strong> <span id="meta-property"></span></span>
+        <span><strong>Settlement Date:</strong> <span id="meta-date"></span></span>
+        <span><strong>Borrower:</strong> <span id="meta-borrower"></span></span>
+      </div>
+    </div>
+  </header>
+
+  <main class="container">
+    <!-- Summary cards -->
+    <section class="cards" aria-label="Summary totals">
+      <div class="card">
+        <div class="card-label">Partner A Total Paid</div>
+        <div class="card-value" id="total-a">$0.00</div>
+      </div>
+      <div class="card">
+        <div class="card-label">Partner Z Total Paid</div>
+        <div class="card-value accent" id="total-z">$0.00</div>
+      </div>
+      <div class="card">
+        <div class="card-label">Total Outlay To Date</div>
+        <div class="card-value" id="total-all">$0.00</div>
+      </div>
+    </section>
+
+    <div id="reconcile-banner" class="banner hidden"></div>
+
+    <!-- Toolbar -->
+    <section class="toolbar">
+      <button id="add-btn" class="btn btn-primary">+ Add Expense</button>
+      <div class="spacer"></div>
+      <label class="group-label">Group by
+        <select id="group-select">
+          <option value="section">Report Section</option>
+          <option value="bucket">Master Bucket</option>
+          <option value="paidBy">Paid By</option>
+        </select>
+      </label>
+      <button id="export-btn" class="btn">Export CSV</button>
+      <button id="backup-btn" class="btn">Backup JSON</button>
+      <label class="btn" for="restore-input">Restore JSON</label>
+      <input id="restore-input" type="file" accept="application/json" hidden />
+      <button id="print-btn" class="btn">Print / PDF</button>
+      <button id="reset-btn" class="btn btn-danger">Reset to PDF</button>
+    </section>
+
+    <!-- Grouped expense tables -->
+    <div id="groups"></div>
+  </main>
+
+  <!-- Add/Edit modal -->
+  <div id="modal" class="modal-overlay hidden">
+    <div class="modal">
+      <h2 id="modal-title">Add Expense</h2>
+      <form id="expense-form">
+        <input type="hidden" id="f-id" />
+        <div class="form-grid">
+          <label>Date
+            <input type="date" id="f-date" />
+          </label>
+          <label>Amount ($)
+            <input type="number" id="f-amount" step="0.01" min="0" required />
+          </label>
+          <label class="full">Description / Payable To
+            <input type="text" id="f-description" required />
+          </label>
+          <label>Category
+            <input type="text" id="f-category" placeholder="e.g. Lender Fee" />
+          </label>
+          <label>Paid By
+            <select id="f-paidBy" required></select>
+          </label>
+          <label>Report Section
+            <select id="f-section"></select>
+          </label>
+          <label>Master Bucket
+            <select id="f-bucket"></select>
+          </label>
+        </div>
+        <div class="modal-actions">
+          <button type="button" id="cancel-btn" class="btn">Cancel</button>
+          <button type="submit" class="btn btn-primary">Save</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <footer class="footer">
+    Project Expense Tracker | <span id="foot-property"></span> ·
+    Data saved locally in this browser. Use <em>Backup JSON</em> to sync between devices.
+  </footer>
+
+  <script src="data.js"></script>
+  <script src="app.js"></script>
+</body>
+</html>
