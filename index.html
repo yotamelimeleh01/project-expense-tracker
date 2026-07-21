@@ -38,6 +38,34 @@
 
     <div id="reconcile-banner" class="banner hidden"></div>
 
+    <!-- Lender payoff -->
+    <section class="loan-panel" aria-label="Loan payoff">
+      <div class="loan-head">
+        <h2>Loan Payoff at Sale</h2>
+        <span class="loan-lender" id="loan-lender"></span>
+      </div>
+      <div class="cards loan-cards">
+        <div class="card">
+          <div class="card-label">Funded at Closing</div>
+          <div class="card-value" id="loan-funded">$0.00</div>
+        </div>
+        <div class="card">
+          <div class="card-label">Construction Draws Taken</div>
+          <div class="card-value accent" id="loan-draws">$0.00</div>
+        </div>
+        <div class="card">
+          <div class="card-label">Est. Payoff at Sale</div>
+          <div class="card-value payoff" id="loan-payoff">$0.00</div>
+        </div>
+      </div>
+      <p class="loan-note" id="loan-holdback-note"></p>
+      <div class="loan-draws-head">
+        <h3>Construction Draws</h3>
+        <button id="add-draw-btn" class="btn btn-primary">+ Add Draw</button>
+      </div>
+      <div id="draws-table"></div>
+    </section>
+
     <!-- Toolbar -->
     <section class="toolbar">
       <button id="add-btn" class="btn btn-primary">+ Add Expense</button>
@@ -85,6 +113,31 @@
         </div>
         <div class="modal-actions">
           <button type="button" id="cancel-btn" class="btn">Cancel</button>
+          <button type="submit" class="btn btn-primary">Save</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <!-- Add/Edit construction draw modal -->
+  <div id="draw-modal" class="modal-overlay hidden">
+    <div class="modal">
+      <h2 id="draw-modal-title">Add Construction Draw</h2>
+      <form id="draw-form">
+        <input type="hidden" id="d-id" />
+        <div class="form-grid">
+          <label>Date
+            <input type="date" id="d-date" />
+          </label>
+          <label>Amount ($)
+            <input type="number" id="d-amount" step="0.01" min="0" required />
+          </label>
+          <label class="full">Note / Purpose
+            <input type="text" id="d-note" placeholder="e.g. Draw 1 - framing & rough-in" />
+          </label>
+        </div>
+        <div class="modal-actions">
+          <button type="button" id="draw-cancel-btn" class="btn">Cancel</button>
           <button type="submit" class="btn btn-primary">Save</button>
         </div>
       </form>

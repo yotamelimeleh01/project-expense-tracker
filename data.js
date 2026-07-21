@@ -16,6 +16,21 @@ const PROPERTY = {
   settlementDate: "2026-07-08",
 };
 
+// Loan structure from the ALTA (File 267286-50).
+// Total note is $137,700, of which $42,500 is a construction holdback that is
+// drawn over time. Funded principal at closing = amount - holdback = $95,200.
+// Payoff owed at sale = funded principal + construction draws taken
+// (excludes interest & exit fees).
+const LOAN = {
+  lender: "National Loan Funding LLC",
+  amount: 137700,
+  holdback: 42500,
+};
+
+// Construction draws pulled from the holdback (none drawn yet).
+const SEED_DRAWS = [];
+
+
 // The four everyday sections the tracker is organized by.
 const SECTIONS = [
   "Closing & Deal Costs",

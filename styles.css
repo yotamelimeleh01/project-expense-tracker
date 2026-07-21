@@ -69,6 +69,39 @@ body {
 .card-value.accent { color: var(--green); }
 .card:last-child .card-value { color: var(--text); }
 
+/* Loan payoff panel */
+.loan-panel {
+  background: #fff;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  padding: 18px 20px;
+  margin-bottom: 18px;
+}
+.loan-head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-bottom: 14px;
+}
+.loan-head h2 { margin: 0; font-size: 18px; }
+.loan-lender { color: var(--muted); font-size: 13px; }
+.loan-cards { margin-bottom: 6px; }
+.loan-cards .card { border-color: #dbe4f0; }
+.loan-cards .card:last-child .card-value { color: var(--danger); }
+.loan-note { font-size: 13px; color: var(--muted); margin: 4px 2px 16px; }
+.loan-draws-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  border-top: 1px solid var(--line);
+  padding-top: 14px;
+  margin-bottom: 8px;
+}
+.loan-draws-head h3 { margin: 0; font-size: 15px; }
+.empty { color: var(--muted); font-size: 13px; background: var(--bg); padding: 14px; border-radius: 8px; }
+
 /* Reconcile banner */
 .banner {
   background: #fff7ed;
