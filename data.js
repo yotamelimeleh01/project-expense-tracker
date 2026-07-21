@@ -2,10 +2,13 @@
 // Property: 450 Spring Dr, Ocala, FL 34472 | Settlement Date: 2026-07-08
 //
 // NOTE: Totals in this app are always computed from these line items.
-// The original PDF header showed higher totals (A $547.29 / Z $31,772.62 /
-// $32,319.91) than the itemized rows sum to (A $312.29 / Z $25,837.64 /
-// $26,149.93) — a ~$6,170 gap, likely receipts that were never itemized.
-// Add the missing rows here or in the app to reconcile.
+// Reconciled against the borrower's own ledger (Ocala.txt) and the ALTA
+// Settlement Statement (File 267286-50). Two items the first PDF omitted have
+// been added: Partner A's $235 water service deposit, and Partner Z's
+// $5,934.98 pre-closing deposit (earnest money + additional deposit paid
+// before settlement; part of the $29,684 "Closing" figure that the ALTA's
+// itemized fees alone did not cover). Totals now match the header exactly:
+// A $547.29 / Z $31,772.62 / $32,319.91.
 
 const PROPERTY = {
   name: "450 Spring Dr, Ocala, FL 34472",
@@ -31,6 +34,7 @@ const SECTIONS = [
   "Site Prep, Waste & Landscaping Cleanout",
   "Materials, Tools & Store Purchases",
   "Direct Labor, Contractor Pay & Crew Lodging",
+  "Utilities & Operational Costs",
 ];
 
 const PARTNERS = { A: "Partner A", Z: "Partner Z" };
@@ -38,6 +42,7 @@ const PARTNERS = { A: "Partner A", Z: "Partner Z" };
 // paidBy: "A" | "Z"
 const SEED_EXPENSES = [
   // 1. Lender Charges & Financing Fees
+  { date: "", description: "Earnest Money & Deposit Paid Before Closing (part of $29,684 closing)", category: "Deposit / Cash to Close", section: SECTIONS[0], bucket: "Financing & Lender", paidBy: "Z", amount: 5934.98 },
   { date: "2026-07-08", description: "Origination Fee (Pay to Sherman Bridge)", category: "Lender Fee", section: SECTIONS[0], bucket: "Financing & Lender", paidBy: "Z", amount: 2754.0 },
   { date: "2026-07-08", description: "Prepaid Interest (07/08/26 - 08/01/26)", category: "Prepaid Interest", section: SECTIONS[0], bucket: "Financing & Lender", paidBy: "Z", amount: 908.82 },
   { date: "2026-07-08", description: "Document Prep Fee (National Loan Funding LLC)", category: "Lender Fee", section: SECTIONS[0], bucket: "Financing & Lender", paidBy: "Z", amount: 1995.0 },
@@ -72,6 +77,9 @@ const SEED_EXPENSES = [
   // 6. Direct Labor, Contractor Pay & Crew Lodging
   { date: "", description: "Carlos - Hotel Accommodation (4 Nights)", category: "Crew Lodging", section: SECTIONS[5], bucket: "Labor & Subcontractors", paidBy: "A", amount: 200.0 },
   { date: "", description: "Carlos - On-Site Direct Labor (2 Days)", category: "Contractor Labor", section: SECTIONS[5], bucket: "Labor & Subcontractors", paidBy: "Z", amount: 400.0 },
+
+  // 7. Utilities & Operational Costs
+  { date: "", description: "Water Service Deposit", category: "Utility Deposit", section: SECTIONS[6], bucket: "Utilities & Taxes", paidBy: "A", amount: 235.0 },
 ];
 
 // The totals the original PDF header displayed (kept for reconciliation).

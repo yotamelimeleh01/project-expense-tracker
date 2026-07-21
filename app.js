@@ -1,6 +1,6 @@
 "use strict";
 
-const STORAGE_KEY = "mpet.expenses.v1";
+const STORAGE_KEY = "mpet.expenses.v2";
 
 // ---------- State ----------
 let expenses = load();
