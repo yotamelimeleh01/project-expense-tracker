@@ -39,6 +39,33 @@ const SECTIONS = [
 
 const PARTNERS = { A: "Partner A", Z: "Partner Z" };
 
+// Fixed category list for the Add/Edit dropdown.
+const CATEGORIES = [
+  "Deposit / Cash to Close",
+  "Lender Fee",
+  "Prepaid Interest",
+  "Title / Settlement",
+  "Title Search",
+  "Title Endorsement",
+  "Title Insurance",
+  "Recording Fees",
+  "Transfer Tax",
+  "Property Insurance",
+  "Wholesale Fee",
+  "Brokerage Fee",
+  "Closing Admin",
+  "Demo & Waste",
+  "Landscaping",
+  "Materials/Tools",
+  "Crew Lodging",
+  "Contractor Labor",
+  "Utility Deposit",
+  "Utilities",
+  "Property Taxes",
+  "Permits",
+  "Other",
+];
+
 // paidBy: "A" | "Z"
 const SEED_EXPENSES = [
   // 1. Lender Charges & Financing Fees

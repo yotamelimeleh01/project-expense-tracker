@@ -180,7 +180,12 @@ function openModal(id) {
   document.getElementById("f-date").value = existing ? existing.date || "" : "";
   document.getElementById("f-amount").value = existing ? existing.amount : "";
   document.getElementById("f-description").value = existing ? existing.description : "";
-  document.getElementById("f-category").value = existing ? existing.category || "" : "";
+
+  fillSelect(
+    document.getElementById("f-category"),
+    CATEGORIES.map((c) => ({ value: c, label: c })),
+    existing ? existing.category : CATEGORIES[0]
+  );
 
   fillSelect(
     document.getElementById("f-paidBy"),
