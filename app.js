@@ -1727,6 +1727,9 @@ function restoreSnapshot() {
 function registerServiceWorker() {
   if (!("serviceWorker" in navigator) || location.protocol === "file:") return;
   navigator.serviceWorker.register("sw.js").then((reg) => {
+    // Look for a new version on every load, not only when the browser feels
+    // like it. A deploy nobody is told about may as well not have happened.
+    reg.update().catch(() => {});
     // A new version is never forced on someone mid-entry; they are asked.
     reg.addEventListener("updatefound", () => {
       const fresh = reg.installing;

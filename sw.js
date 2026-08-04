@@ -8,7 +8,7 @@
 //
 // Bump CACHE whenever the shell changes. Old caches are deleted on activate,
 // so a stale version cannot outlive a deploy.
-const CACHE = "pet-shell-v7";
+const CACHE = "pet-shell-v8";
 
 const SHELL = [
   "./",
@@ -62,6 +62,43 @@ function isSupabase(url) {
   return url.hostname.endsWith(".supabase.co");
 }
 
+// Things that never change once published: the icons, and the CDN bundle, whose
+// URL carries its own version number. These are safe to serve from the cache
+// forever. Everything else is the app's own code, which changes on every deploy.
+function isImmutable(url) {
+  return url.origin !== self.location.origin || /\.(png|svg|ico|woff2?)$/.test(url.pathname);
+}
+
+// Answer from the cache, and quietly fetch a fresh copy for next time.
+function cacheFirst(req) {
+  return caches.match(req, { ignoreSearch: true }).then((hit) => {
+    const fresh = fetch(req)
+      .then((res) => {
+        if (res && res.ok) {
+          const copy = res.clone();
+          caches.open(CACHE).then((c) => c.put(req, copy));
+        }
+        return res;
+      })
+      .catch(() => hit);
+    return hit || fresh;
+  });
+}
+
+// Ask the network, fall back to the cache. Costs one round trip when there is
+// signal and gives the cached copy the instant there is not.
+function networkFirst(req, fallback) {
+  return fetch(req)
+    .then((res) => {
+      if (res && res.ok) {
+        const copy = res.clone();
+        caches.open(CACHE).then((c) => c.put(req, copy));
+      }
+      return res;
+    })
+    .catch(() => caches.match(fallback || req, { ignoreSearch: true }));
+}
+
 self.addEventListener("fetch", (event) => {
   const req = event.request;
   if (req.method !== "GET") return;
@@ -74,26 +111,11 @@ self.addEventListener("fetch", (event) => {
 
   // A deep link like #/p/xyz is still a request for index.html.
   if (req.mode === "navigate") {
-    event.respondWith(
-      fetch(req).catch(() => caches.match("./index.html", { ignoreSearch: true }))
-    );
+    event.respondWith(networkFirst(req, "./index.html"));
     return;
   }
 
-  // Everything else: answer from the cache immediately, then quietly refresh it
-  // for next time.
-  event.respondWith(
-    caches.match(req, { ignoreSearch: true }).then((hit) => {
-      const fresh = fetch(req)
-        .then((res) => {
-          if (res && res.ok) {
-            const copy = res.clone();
-            caches.open(CACHE).then((c) => c.put(req, copy));
-          }
-          return res;
-        })
-        .catch(() => hit);
-      return hit || fresh;
-    })
-  );
+  // The app's own code is never served stale. Doing so means every deploy is
+  // one reload behind, which looks exactly like the deploy not having happened.
+  event.respondWith(isImmutable(url) ? cacheFirst(req) : networkFirst(req));
 });
