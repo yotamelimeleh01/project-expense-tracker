@@ -1,9 +1,38 @@
 "use strict";
 
 // ---------- State ----------
-let expenses = [];
-let draws = [];
+let projects = [];
+let partners = [];       // partner rows for every project you can see
+let memberships = [];    // your access + everyone else's, per project
+let summaries = [];      // lightweight expense rows for every project
+let allDraws = [];       // draw rows for every project
+
+let expenses = [];       // full rows (with receipts) for the open project
+let draws = [];          // draw rows for the open project
+let activeProjectId = null;
+
 let pendingReceipts = [];
+let pendingPartners = [];
+let currentUser = null;
+let booted = false;
+
+// ---------- Formatting ----------
+const fmt = new Intl.NumberFormat("en-US", { style: "currency", currency: "USD" });
+function money(n) {
+  return fmt.format(Number(n) || 0);
+}
+function escapeHtml(s) {
+  return String(s ?? "").replace(/[&<>"']/g, (c) =>
+    ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c])
+  );
+}
+function sum(list, pick) {
+  return list.reduce((s, x) => s + (Number(pick ? pick(x) : x.amount) || 0), 0);
+}
+function reportError(action, err) {
+  console.error(action, err);
+  alert("Could not " + action + ".\n\n" + (err && err.message ? err.message : err));
+}
 
 // Resize + compress an image file into a small JPEG data URL so receipts stay
 // light to store and quick to load.
@@ -28,74 +57,352 @@ function compressImage(file, maxDim = 1200, quality = 0.65) {
   });
 }
 
-function reportError(action, err) {
-  console.error(action, err);
-  alert("Could not " + action + ".\n\n" + (err && err.message ? err.message : err));
+// ---------- Lookups ----------
+function activeProject() {
+  return projects.find((p) => p.id === activeProjectId) || null;
+}
+function partnersOf(projectId) {
+  return partners.filter((p) => p.projectId === projectId).sort((a, b) => a.sort - b.sort);
+}
+function partnerName(id) {
+  const p = partners.find((x) => x.id === id);
+  return p ? p.name : "Unassigned";
+}
+function myRole(projectId) {
+  if (!currentUser) return null;
+  const m = memberships.find((x) => x.projectId === projectId && x.userId === currentUser.id);
+  return m ? m.role : null;
+}
+function canEdit(projectId) {
+  const r = myRole(projectId);
+  return r === "owner" || r === "editor";
+}
+function isOwner(projectId) {
+  return myRole(projectId) === "owner";
+}
+function memberCount(projectId) {
+  return memberships.filter((m) => m.projectId === projectId).length;
 }
 
-// ---------- Formatting ----------
-const fmt = new Intl.NumberFormat("en-US", { style: "currency", currency: "USD" });
-function money(n) {
-  return fmt.format(Number(n) || 0);
+// ---------- Money math ----------
+// One set of formulas, used by both the dashboard cards and the project page,
+// so a number can never mean two different things in two places.
+function loanNumbers(project, drawList) {
+  const totalDraws = sum(drawList);
+  const funded = (Number(project.loanAmount) || 0) - (Number(project.loanHoldback) || 0);
+  return {
+    totalDraws,
+    funded,
+    remaining: (Number(project.loanHoldback) || 0) - totalDraws,
+    payoff: funded + totalDraws,
+  };
 }
-function escapeHtml(s) {
-  return String(s ?? "").replace(/[&<>"']/g, (c) =>
-    ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c])
+
+// Total capital deployed into the deal = every dollar the partners have paid
+// out of pocket, plus the loan principal the lender funded at closing.
+//
+// Construction draws are deliberately NOT added here. A draw reimburses an
+// expense that is already entered as a line item, so counting both would
+// inflate this number by the amount of every draw. Draws still increase what
+// is owed back to the lender, which is what the payoff panel tracks.
+function allInNumbers(project, expenseList, drawList) {
+  const partnerCash = sum(expenseList);
+  const loan = loanNumbers(project, drawList);
+  return {
+    partnerCash,
+    funded: loan.funded,
+    totalDraws: loan.totalDraws,
+    payoff: loan.payoff,
+    allIn: partnerCash + loan.funded,
+  };
+}
+
+// Profit = sale price − all-in.
+//
+// The long way round is: sale price, less the lender payoff, plus the draws the
+// partners received, less the cash the partners put in. The draws cancel out,
+// because a draw both raises the payoff and comes back as cash — which leaves
+// exactly sale price minus all-in.
+function profitOf(project, expenseList, drawList) {
+  if (project.salePrice === null || project.salePrice === undefined) return null;
+  const n = allInNumbers(project, expenseList, drawList);
+  return { sale: Number(project.salePrice) || 0, allIn: n.allIn, profit: Number(project.salePrice) - n.allIn };
+}
+
+function statusClass(status) {
+  return "status status-" + String(status || "before_closing").replace(/_/g, "-");
+}
+
+// ---------- Routing ----------
+function currentRoute() {
+  const m = String(location.hash || "").match(/^#\/p\/(.+)$/);
+  return m ? { view: "project", id: decodeURIComponent(m[1]) } : { view: "dashboard" };
+}
+
+function goDashboard() {
+  location.hash = "#/";
+}
+function goProject(id) {
+  location.hash = "#/p/" + encodeURIComponent(id);
+}
+
+async function route() {
+  const r = currentRoute();
+  const dash = document.getElementById("dashboard-view");
+  const proj = document.getElementById("project-view");
+  const crumbs = document.getElementById("crumbs");
+
+  if (r.view === "project" && projects.some((p) => p.id === r.id)) {
+    activeProjectId = r.id;
+    dash.classList.add("hidden");
+    proj.classList.remove("hidden");
+    crumbs.classList.remove("hidden");
+    document.getElementById("crumb-current").textContent = activeProject().name;
+    try {
+      expenses = await Store.getExpenses(activeProjectId);
+      draws = allDraws.filter((d) => d.projectId === activeProjectId);
+      syncSummaries();
+    } catch (err) {
+      reportError("load this project", err);
+      return;
+    }
+    renderProject();
+    return;
+  }
+
+  activeProjectId = null;
+  expenses = [];
+  draws = [];
+  proj.classList.add("hidden");
+  crumbs.classList.add("hidden");
+  dash.classList.remove("hidden");
+  renderDashboard();
+}
+
+// Full rows are only loaded for the open project. Fold them back into the
+// lightweight list so the dashboard totals stay right after an edit.
+function syncSummaries() {
+  summaries = summaries
+    .filter((e) => e.projectId !== activeProjectId)
+    .concat(expenses.map((e) => ({ ...e, receipts: [] })));
+}
+
+// ===========================================================================
+// DASHBOARD
+// ===========================================================================
+function renderDashboard() {
+  const filter = document.getElementById("status-filter").value;
+  const visible = filter ? projects.filter((p) => p.status === filter) : projects;
+
+  let portfolioAllIn = 0;
+  let portfolioCash = 0;
+  let realized = 0;
+  let projected = 0;
+
+  const cards = visible
+    .slice()
+    .sort((a, b) => PROJECT_STATUSES.findIndex((s) => s.value === a.status) -
+                    PROJECT_STATUSES.findIndex((s) => s.value === b.status))
+    .map((p) => {
+      const exp = summaries.filter((e) => e.projectId === p.id);
+      const dr = allDraws.filter((d) => d.projectId === p.id);
+      const n = allInNumbers(p, exp, dr);
+      const pr = profitOf(p, exp, dr);
+
+      const profitRow = pr
+        ? '<div class="pc-row"><span>' +
+          (p.status === "sold" ? "Profit" : "Projected profit") +
+          '</span><strong class="' + (pr.profit >= 0 ? "pos" : "neg") + '">' +
+          money(pr.profit) + "</strong></div>"
+        : "";
+
+      return (
+        '<button class="project-card" data-open="' + escapeHtml(p.id) + '">' +
+        '<div class="pc-head">' +
+        '<span class="pc-name">' + escapeHtml(p.name) + "</span>" +
+        '<span class="' + statusClass(p.status) + '">' + escapeHtml(statusLabel(p.status)) + "</span>" +
+        "</div>" +
+        (p.address ? '<div class="pc-address">' + escapeHtml(p.address) + "</div>" : "") +
+        '<div class="pc-allin"><span>All-in</span><strong>' + money(n.allIn) + "</strong></div>" +
+        '<div class="pc-rows">' +
+        '<div class="pc-row"><span>Partner cash</span><strong>' + money(n.partnerCash) + "</strong></div>" +
+        '<div class="pc-row"><span>Lender payoff</span><strong>' + money(n.payoff) + "</strong></div>" +
+        profitRow +
+        "</div>" +
+        '<div class="pc-foot">' + exp.length + " expense" + (exp.length === 1 ? "" : "s") +
+        " \u00b7 " + memberCount(p.id) + " with access \u00b7 " + escapeHtml(myRole(p.id) || "member") +
+        "</div>" +
+        "</button>"
+      );
+    })
+    .join("");
+
+  for (const p of projects) {
+    const exp = summaries.filter((e) => e.projectId === p.id);
+    const dr = allDraws.filter((d) => d.projectId === p.id);
+    const n = allInNumbers(p, exp, dr);
+    portfolioAllIn += n.allIn;
+    portfolioCash += n.partnerCash;
+    const pr = profitOf(p, exp, dr);
+    if (pr) {
+      if (p.status === "sold") realized += pr.profit;
+      else projected += pr.profit;
+    }
+  }
+
+  document.getElementById("portfolio-allin").textContent = money(portfolioAllIn);
+  document.getElementById("portfolio-sub").innerHTML =
+    "Your cash <strong>" + money(portfolioCash) + "</strong>" +
+    " &nbsp;+&nbsp; Lender funded <strong>" + money(portfolioAllIn - portfolioCash) + "</strong>";
+
+  const counts = PROJECT_STATUSES.map((s) => ({
+    label: s.label,
+    n: projects.filter((p) => p.status === s.value).length,
+  })).filter((s) => s.n > 0);
+
+  document.getElementById("portfolio-stats").innerHTML =
+    '<div class="pstat"><span>Projects</span><strong>' + projects.length + "</strong></div>" +
+    (realized
+      ? '<div class="pstat"><span>Profit realized</span><strong class="' +
+        (realized >= 0 ? "pos" : "neg") + '">' + money(realized) + "</strong></div>"
+      : "") +
+    (projected
+      ? '<div class="pstat"><span>Profit projected</span><strong class="' +
+        (projected >= 0 ? "pos" : "neg") + '">' + money(projected) + "</strong></div>"
+      : "") +
+    counts.map((c) => '<div class="pstat"><span>' + escapeHtml(c.label) +
+      "</span><strong>" + c.n + "</strong></div>").join("");
+
+  document.getElementById("project-grid").innerHTML = cards;
+  document.getElementById("dashboard-empty").classList.toggle("hidden", projects.length > 0);
+
+  document.querySelectorAll("[data-open]").forEach((b) =>
+    b.addEventListener("click", () => goProject(b.dataset.open))
   );
 }
 
-// ---------- Totals ----------
-function totals() {
-  let a = 0, z = 0;
-  for (const e of expenses) {
-    const amt = Number(e.amount) || 0;
-    if (e.paidBy === "A") a += amt;
-    else z += amt;
-  }
-  return { a, z, total: a + z };
+// ===========================================================================
+// PROJECT PAGE
+// ===========================================================================
+function renderProject() {
+  const p = activeProject();
+  if (!p) return;
+  const editable = canEdit(p.id);
+
+  document.getElementById("p-name").textContent = p.name;
+  document.getElementById("p-address").textContent = p.address || "";
+  document.getElementById("p-status").value = p.status;
+  document.getElementById("p-status").disabled = !editable;
+
+  const meta = [];
+  if (p.settlementDate) meta.push(["Settlement", p.settlementDate]);
+  if (p.borrower) meta.push(["Borrower", p.borrower]);
+  if (p.purchasePrice) meta.push(["Purchase price", money(p.purchasePrice)]);
+  if (p.saleDate) meta.push(["Sold", p.saleDate]);
+  document.getElementById("p-meta").innerHTML = meta
+    .map(([k, v]) => "<span><strong>" + escapeHtml(k) + ":</strong> " + escapeHtml(v) + "</span>")
+    .join("");
+
+  document.getElementById("share-btn").classList.toggle("hidden", !isOwner(p.id));
+  setAppEnabled(editable);
+
+  renderAllIn(p);
+  renderProfit(p);
+  renderPartnerCards(p);
+  renderBreakdown(p);
+  renderLoan(p);
+  renderGroups();
 }
 
-// ---------- Rendering ----------
-function render() {
-  document.getElementById("meta-property").textContent = PROPERTY.name;
-  document.getElementById("meta-date").textContent = PROPERTY.settlementDate;
-  document.getElementById("meta-borrower").textContent = PROPERTY.borrower;
-  document.getElementById("foot-property").textContent = PROPERTY.name;
+function renderAllIn(p) {
+  const n = allInNumbers(p, expenses, draws);
+  document.getElementById("total-allin").textContent = money(n.allIn);
 
-  const t = totals();
-  document.getElementById("total-a").textContent = money(t.a);
-  document.getElementById("total-z").textContent = money(t.z);
-  document.getElementById("total-all").textContent = money(t.total);
+  const drawNote = n.totalDraws
+    ? '<span class="allin-note">' + money(n.totalDraws) +
+      " of construction draws are not added again here \u2014 they reimburse expenses already " +
+      "counted above. They do raise the lender payoff below.</span>"
+    : "";
 
-  renderAllIn(t);
-  renderBreakdown();
-  renderLoan();
-  renderGroups();
+  document.getElementById("allin-breakdown").innerHTML =
+    "Partner cash <strong>" + money(n.partnerCash) + "</strong>" +
+    " &nbsp;+&nbsp; Lender funded at closing <strong>" + money(n.funded) + "</strong>" +
+    drawNote;
+}
+
+function renderProfit(p) {
+  const panel = document.getElementById("profit-panel");
+  const pr = profitOf(p, expenses, draws);
+  if (!pr) {
+    panel.classList.add("hidden");
+    return;
+  }
+  panel.classList.remove("hidden");
+  document.getElementById("profit-sale").textContent = money(pr.sale);
+  document.getElementById("profit-allin").textContent = money(pr.allIn);
+  document.getElementById("profit-label").textContent =
+    p.status === "sold" ? "Profit" : "Projected Profit";
+  const el = document.getElementById("profit-value");
+  el.textContent = money(pr.profit);
+  el.className = "card-value " + (pr.profit >= 0 ? "pos" : "neg");
+
+  const n = allInNumbers(p, expenses, draws);
+  document.getElementById("profit-note").textContent =
+    "Sale price minus everything in the deal. At closing you hand the lender " +
+    money(n.payoff) + " and keep the rest; the " + money(n.totalDraws) +
+    " of draws you already received is why the payoff is larger than what was funded. " +
+    "Interest, exit fees and selling costs are not included.";
+}
+
+function renderPartnerCards(p) {
+  const list = partnersOf(p.id);
+  const total = sum(expenses);
+  const cards = list.map((pt, i) => {
+    const paid = sum(expenses.filter((e) => e.partnerId === pt.id));
+    return (
+      '<div class="card">' +
+      '<div class="card-label">' + escapeHtml(pt.name) + " Total Paid</div>" +
+      '<div class="card-value' + (i % 2 ? " accent" : "") + '">' + money(paid) + "</div>" +
+      "</div>"
+    );
+  });
+
+  const unassigned = sum(expenses.filter((e) => !e.partnerId));
+  if (unassigned > 0) {
+    cards.push(
+      '<div class="card"><div class="card-label">Unassigned</div>' +
+      '<div class="card-value">' + money(unassigned) + "</div></div>"
+    );
+  }
+
+  cards.push(
+    '<div class="card"><div class="card-label">Total Outlay To Date</div>' +
+    '<div class="card-value">' + money(total) + "</div></div>"
+  );
+  document.getElementById("partner-cards").innerHTML = cards.join("");
 }
 
 // ---------- Cost breakdown ----------
 // Buckets roll up from the sections in data.js, so every bucket total and the
 // grand total are derived from the same line items as everything else.
 // The three buckets sum to exactly the all-in headline figure.
-function breakdownGroups() {
-  const { funded } = loanNumbers();
+function breakdownGroups(p) {
+  const { funded } = loanNumbers(p, draws);
   return COST_GROUPS.map((g) => {
     const lines = g.sections.map((name) => ({
       label: name,
-      amount: expenses
-        .filter((e) => e.section === name)
-        .reduce((sum, e) => sum + (Number(e.amount) || 0), 0),
+      amount: sum(expenses.filter((e) => e.section === name)),
     }));
     if (g.includeLoanFunded) {
       lines.push({ label: "Lender principal funded at closing", amount: funded, lender: true });
     }
-    return { ...g, lines, total: lines.reduce((sum, l) => sum + l.amount, 0) };
+    return { ...g, lines, total: lines.reduce((s, l) => s + l.amount, 0) };
   });
 }
 
-function renderBreakdown() {
-  const groups = breakdownGroups();
-  const grand = groups.reduce((sum, g) => sum + g.total, 0);
+function renderBreakdown(p) {
+  const groups = breakdownGroups(p);
+  const grand = groups.reduce((s, g) => s + g.total, 0);
   document.getElementById("breakdown-total").textContent = money(grand) + " total";
 
   document.getElementById("breakdown-groups").innerHTML = groups
@@ -131,49 +438,12 @@ function renderBreakdown() {
     "reimburse expenses already listed, and are tracked as lender payoff below.";
 }
 
-// ---------- Headline all-in figure ----------
-// Total capital deployed into the deal = every dollar the partners have paid
-// out of pocket, plus the loan principal the lender funded at closing.
-//
-// Construction draws are deliberately NOT added here. A draw reimburses an
-// expense that is already entered as a line item above, so counting both would
-// inflate this number by the amount of every draw. Draws still increase what
-// is owed back to the lender, which is what the payoff panel tracks.
-function allInNumbers() {
-  const t = totals();
-  const { funded, totalDraws } = loanNumbers();
-  return { partnerCash: t.total, funded, totalDraws, allIn: t.total + funded };
-}
-
-function renderAllIn(t) {
-  const n = allInNumbers();
-  document.getElementById("total-allin").textContent = money(n.allIn);
-
-  const drawNote = n.totalDraws
-    ? "<span class=\"allin-note\">" + money(n.totalDraws) +
-      " of construction draws are not added again here \u2014 they reimburse expenses already " +
-      "counted above. They do raise the lender payoff below.</span>"
-    : "";
-
-  document.getElementById("allin-breakdown").innerHTML =
-    "Partner cash <strong>" + money(n.partnerCash) + "</strong>" +
-    " &nbsp;+&nbsp; Lender funded at closing <strong>" + money(n.funded) + "</strong>" +
-    drawNote;
-}
-
 // ---------- Loan payoff ----------
-function loanNumbers() {
-  const totalDraws = draws.reduce((s, d) => s + (Number(d.amount) || 0), 0);
-  const funded = LOAN.amount - LOAN.holdback;
-  const remaining = LOAN.holdback - totalDraws;
-  const payoff = funded + totalDraws;
-  return { totalDraws, funded, remaining, payoff };
-}
-
-function renderLoan() {
-  const n = loanNumbers();
-  document.getElementById("loan-lender").textContent =
-    LOAN.lender + " \u00b7 Note " + money(LOAN.amount);
+function renderLoan(p) {
+  const n = loanNumbers(p, draws);
+  document.getElementById("loan-lender").textContent = p.lender
+    ? p.lender + " \u00b7 Note " + money(p.loanAmount)
+    : "No lender on this project";
   document.getElementById("loan-funded").textContent = money(n.funded);
   document.getElementById("loan-draws").textContent = money(n.totalDraws);
   document.getElementById("loan-payoff").textContent = money(n.payoff);
@@ -183,18 +453,18 @@ function renderLoan() {
       ? "over-drawn by <strong>" + money(-n.remaining) + "</strong>"
       : "remaining: <strong>" + money(n.remaining) + "</strong>";
   document.getElementById("loan-holdback-note").innerHTML =
-    "Construction holdback " + holdbackStatus + " of " + money(LOAN.holdback) +
+    "Construction holdback " + holdbackStatus + " of " + money(p.loanHoldback) +
     " available to draw. Payoff shown is principal only \u2014 it excludes interest & exit fees.";
 
-  renderDrawsTable();
+  renderDrawsTable(p);
 }
 
-function renderDrawsTable() {
+function renderDrawsTable(p) {
   const el = document.getElementById("draws-table");
   if (!draws.length) {
     el.innerHTML =
       '<p class="empty">No construction draws logged yet \u2014 $0 of the ' +
-      money(LOAN.holdback) +
+      money(p.loanHoldback) +
       " holdback drawn. Add a draw each time you pull from the construction reserve.</p>";
     return;
   }
@@ -203,13 +473,13 @@ function renderDrawsTable() {
     .sort((a, b) => (a.date || "").localeCompare(b.date || ""))
     .map(
       (d) =>
-        '<tr>' +
+        "<tr>" +
         '<td class="col-date">' + escapeHtml(d.date || "\u2014") + "</td>" +
         "<td>" + escapeHtml(d.note || "Construction draw") + "</td>" +
         '<td class="amount">' + money(d.amount) + "</td>" +
         '<td class="actions-cell">' +
-        '<button class="icon-btn" data-draw-edit="' + d.id + '" title="Edit">Edit</button>' +
-        '<button class="icon-btn del" data-draw-del="' + d.id + '" title="Delete">Delete</button>' +
+        '<button class="icon-btn" data-draw-edit="' + d.id + '">Edit</button>' +
+        '<button class="icon-btn del" data-draw-del="' + d.id + '">Delete</button>' +
         "</td></tr>"
     )
     .join("");
@@ -227,80 +497,14 @@ function renderDrawsTable() {
   );
 }
 
-function openDrawModal(id) {
-  const form = document.getElementById("draw-form");
-  const existing = id ? draws.find((d) => d.id === id) : null;
-  document.getElementById("draw-modal-title").textContent = existing
-    ? "Edit Construction Draw"
-    : "Add Construction Draw";
-  document.getElementById("d-id").value = existing ? existing.id : "";
-  document.getElementById("d-date").value = existing ? existing.date || "" : "";
-  document.getElementById("d-amount").value = existing ? existing.amount : "";
-  document.getElementById("d-note").value = existing ? existing.note || "" : "";
-  document.getElementById("draw-modal").classList.remove("hidden");
-  document.getElementById("d-amount").focus();
-  form.onsubmit = (ev) => {
-    ev.preventDefault();
-    saveDrawFromForm();
-  };
-}
-
-function closeDrawModal() {
-  document.getElementById("draw-modal").classList.add("hidden");
-}
-
-async function saveDrawFromForm() {
-  const id = document.getElementById("d-id").value;
-  const record = {
-    date: document.getElementById("d-date").value,
-    amount: parseFloat(document.getElementById("d-amount").value) || 0,
-    note: document.getElementById("d-note").value.trim(),
-  };
-  try {
-    const saved = await Store.saveDraw(record, id || null);
-    if (id) {
-      const idx = draws.findIndex((d) => d.id === id);
-      if (idx > -1) draws[idx] = saved;
-    } else {
-      draws.push(saved);
-    }
-  } catch (err) {
-    reportError("save this draw", err);
-    return;
-  }
-  closeDrawModal();
-  render();
-
-  const n = loanNumbers();
-  if (n.remaining < 0) {
-    alert(
-      "Heads up: total draws (" + money(n.totalDraws) + ") now exceed the " +
-        money(LOAN.holdback) + " construction holdback by " + money(-n.remaining) + "."
-    );
-  }
-}
-
-async function removeDraw(id) {
-  const d = draws.find((x) => x.id === id);
-  if (!d) return;
-  if (!confirm("Delete this draw (" + money(d.amount) + ")?")) return;
-  try {
-    await Store.deleteDraw(id);
-  } catch (err) {
-    reportError("delete this draw", err);
-    return;
-  }
-  draws = draws.filter((x) => x.id !== id);
-  render();
-}
-
+// ---------- Grouped expense tables ----------
 function groupKey(e, mode) {
-  if (mode === "paidBy") return PARTNERS[e.paidBy] || "Unknown";
+  if (mode === "partner") return partnerName(e.partnerId);
   return e.section || "Uncategorized";
 }
 
 function orderedGroups(mode) {
-  if (mode === "paidBy") return [PARTNERS.A, PARTNERS.Z];
+  if (mode === "partner") return partnersOf(activeProjectId).map((p) => p.name);
   return SECTIONS.slice();
 }
 
@@ -322,7 +526,7 @@ function renderGroups() {
 
   for (const key of keys) {
     const rows = map.get(key);
-    const subtotal = rows.reduce((s, e) => s + (Number(e.amount) || 0), 0);
+    const subtotal = sum(rows);
 
     const block = document.createElement("section");
     block.className = "group-block";
@@ -360,7 +564,9 @@ function renderGroups() {
 }
 
 function rowHtml(e) {
-  const badgeClass = e.paidBy === "A" ? "badge a" : "badge";
+  const list = partnersOf(activeProjectId);
+  const idx = list.findIndex((p) => p.id === e.partnerId);
+  const badgeClass = idx % 2 === 0 ? "badge a" : "badge";
   const receipts = Array.isArray(e.receipts) ? e.receipts : [];
   const thumbs = receipts
     .map(
@@ -369,32 +575,42 @@ function rowHtml(e) {
         '" data-lightbox="' + src + '" />'
     )
     .join("");
-  const notes = e.notes
-    ? '<div class="row-notes">' + escapeHtml(e.notes) + "</div>"
-    : "";
-  const extras = notes || thumbs ? '<div class="row-extras">' + notes +
-    (thumbs ? '<div class="thumbs">' + thumbs + "</div>" : "") + "</div>" : "";
+  const notes = e.notes ? '<div class="row-notes">' + escapeHtml(e.notes) + "</div>" : "";
+  const extras =
+    notes || thumbs
+      ? '<div class="row-extras">' + notes + (thumbs ? '<div class="thumbs">' + thumbs + "</div>" : "") + "</div>"
+      : "";
   return `
     <tr>
       <td class="col-date">${escapeHtml(e.date || "—")}</td>
       <td>${escapeHtml(e.description)}${extras}</td>
-      <td><span class="${badgeClass}">${escapeHtml(PARTNERS[e.paidBy] || e.paidBy)}</span></td>
+      <td><span class="${badgeClass}">${escapeHtml(partnerName(e.partnerId))}</span></td>
       <td class="amount">${money(e.amount)}</td>
       <td class="actions-cell">
-        <button class="icon-btn" data-edit="${e.id}" title="Edit">Edit</button>
-        <button class="icon-btn del" data-del="${e.id}" title="Delete">Delete</button>
+        <button class="icon-btn" data-edit="${e.id}">Edit</button>
+        <button class="icon-btn del" data-del="${e.id}">Delete</button>
       </td>
     </tr>`;
 }
 
-// ---------- Modal / CRUD ----------
+// ===========================================================================
+// EXPENSE MODAL
+// ===========================================================================
 function fillSelect(el, values, current) {
   el.innerHTML = values
-    .map((v) => `<option value="${escapeHtml(v.value)}"${v.value === current ? " selected" : ""}>${escapeHtml(v.label)}</option>`)
+    .map(
+      (v) =>
+        `<option value="${escapeHtml(v.value)}"${v.value === current ? " selected" : ""}>${escapeHtml(v.label)}</option>`
+    )
     .join("");
 }
 
 function openModal(id) {
+  const list = partnersOf(activeProjectId);
+  if (!list.length) {
+    alert("Add at least one partner in Project Details first, so expenses can be attributed.");
+    return;
+  }
   const form = document.getElementById("expense-form");
   const existing = id ? expenses.find((e) => e.id === id) : null;
 
@@ -408,9 +624,9 @@ function openModal(id) {
   renderReceiptPreviews();
 
   fillSelect(
-    document.getElementById("f-paidBy"),
-    [{ value: "Z", label: PARTNERS.Z }, { value: "A", label: PARTNERS.A }],
-    existing ? existing.paidBy : "Z"
+    document.getElementById("f-partner"),
+    list.map((p) => ({ value: p.id, label: p.name })),
+    existing ? existing.partnerId : list[0].id
   );
   fillSelect(
     document.getElementById("f-section"),
@@ -429,6 +645,51 @@ function openModal(id) {
 function closeModal() {
   document.getElementById("modal").classList.add("hidden");
   pendingReceipts = [];
+}
+
+async function saveFromForm() {
+  const record = {
+    projectId: activeProjectId,
+    date: document.getElementById("f-date").value,
+    amount: parseFloat(document.getElementById("f-amount").value) || 0,
+    description: document.getElementById("f-description").value.trim(),
+    notes: document.getElementById("f-notes").value.trim(),
+    receipts: pendingReceipts.slice(),
+    partnerId: document.getElementById("f-partner").value,
+    section: document.getElementById("f-section").value,
+  };
+  const id = document.getElementById("f-id").value;
+
+  try {
+    const saved = await Store.saveExpense(record, id || null);
+    if (id) {
+      const idx = expenses.findIndex((e) => e.id === id);
+      if (idx > -1) expenses[idx] = saved;
+    } else {
+      expenses.push(saved);
+    }
+  } catch (err) {
+    reportError("save this expense", err); // modal stays open so nothing is lost
+    return;
+  }
+  syncSummaries();
+  closeModal();
+  renderProject();
+}
+
+async function removeExpense(id) {
+  const e = expenses.find((x) => x.id === id);
+  if (!e) return;
+  if (!confirm(`Delete "${e.description}" (${money(e.amount)})?`)) return;
+  try {
+    await Store.deleteExpense(id);
+  } catch (err) {
+    reportError("delete this expense", err);
+    return;
+  }
+  expenses = expenses.filter((x) => x.id !== id);
+  syncSummaries();
+  renderProject();
 }
 
 // ---------- Receipts ----------
@@ -480,65 +741,346 @@ function closeLightbox() {
   document.getElementById("lightbox-img").src = "";
 }
 
-async function saveFromForm() {
-  const record = {
-    date: document.getElementById("f-date").value,
-    amount: parseFloat(document.getElementById("f-amount").value) || 0,
-    description: document.getElementById("f-description").value.trim(),
-    notes: document.getElementById("f-notes").value.trim(),
-    receipts: pendingReceipts.slice(),
-    paidBy: document.getElementById("f-paidBy").value,
-    section: document.getElementById("f-section").value,
+// ===========================================================================
+// DRAW MODAL
+// ===========================================================================
+function openDrawModal(id) {
+  const form = document.getElementById("draw-form");
+  const existing = id ? draws.find((d) => d.id === id) : null;
+  document.getElementById("draw-modal-title").textContent = existing
+    ? "Edit Construction Draw"
+    : "Add Construction Draw";
+  document.getElementById("d-id").value = existing ? existing.id : "";
+  document.getElementById("d-date").value = existing ? existing.date || "" : "";
+  document.getElementById("d-amount").value = existing ? existing.amount : "";
+  document.getElementById("d-note").value = existing ? existing.note || "" : "";
+  document.getElementById("draw-modal").classList.remove("hidden");
+  document.getElementById("d-amount").focus();
+  form.onsubmit = (ev) => {
+    ev.preventDefault();
+    saveDrawFromForm();
   };
-  const id = document.getElementById("f-id").value;
+}
 
+function closeDrawModal() {
+  document.getElementById("draw-modal").classList.add("hidden");
+}
+
+async function saveDrawFromForm() {
+  const id = document.getElementById("d-id").value;
+  const record = {
+    projectId: activeProjectId,
+    date: document.getElementById("d-date").value,
+    amount: parseFloat(document.getElementById("d-amount").value) || 0,
+    note: document.getElementById("d-note").value.trim(),
+  };
   try {
-    const saved = await Store.saveExpense(record, id || null);
+    const saved = await Store.saveDraw(record, id || null);
     if (id) {
-      const idx = expenses.findIndex((e) => e.id === id);
-      if (idx > -1) expenses[idx] = saved;
+      const i = draws.findIndex((d) => d.id === id);
+      if (i > -1) draws[i] = saved;
+      const j = allDraws.findIndex((d) => d.id === id);
+      if (j > -1) allDraws[j] = saved;
     } else {
-      expenses.push(saved);
+      draws.push(saved);
+      allDraws.push(saved);
     }
   } catch (err) {
-    reportError("save this expense", err); // modal stays open so nothing is lost
+    reportError("save this draw", err);
     return;
   }
-  closeModal();
-  render();
+  closeDrawModal();
+  renderProject();
+
+  const p = activeProject();
+  const n = loanNumbers(p, draws);
+  if (n.remaining < 0) {
+    alert(
+      "Heads up: total draws (" + money(n.totalDraws) + ") now exceed the " +
+        money(p.loanHoldback) + " construction holdback by " + money(-n.remaining) + "."
+    );
+  }
 }
 
-async function removeExpense(id) {
-  const e = expenses.find((x) => x.id === id);
-  if (!e) return;
-  if (!confirm(`Delete "${e.description}" (${money(e.amount)})?`)) return;
+async function removeDraw(id) {
+  const d = draws.find((x) => x.id === id);
+  if (!d) return;
+  if (!confirm("Delete this draw (" + money(d.amount) + ")?")) return;
   try {
-    await Store.deleteExpense(id);
+    await Store.deleteDraw(id);
   } catch (err) {
-    reportError("delete this expense", err);
+    reportError("delete this draw", err);
     return;
   }
-  expenses = expenses.filter((x) => x.id !== id);
-  render();
+  draws = draws.filter((x) => x.id !== id);
+  allDraws = allDraws.filter((x) => x.id !== id);
+  renderProject();
 }
 
-// ---------- Import / Export ----------
+// ===========================================================================
+// PROJECT MODAL (create / edit)
+// ===========================================================================
+function openProjectModal(id) {
+  const existing = id ? projects.find((p) => p.id === id) : null;
+  document.getElementById("project-modal-title").textContent = existing
+    ? "Project Details"
+    : "New Project";
+  document.getElementById("pr-id").value = existing ? existing.id : "";
+  document.getElementById("pr-name").value = existing ? existing.name : "";
+  document.getElementById("pr-address").value = existing ? existing.address : "";
+  document.getElementById("pr-borrower").value = existing ? existing.borrower : "";
+  document.getElementById("pr-lender").value = existing ? existing.lender : "";
+  document.getElementById("pr-settlement").value = existing ? existing.settlementDate : "";
+  document.getElementById("pr-purchase").value =
+    existing && existing.purchasePrice !== null ? existing.purchasePrice : "";
+  document.getElementById("pr-loan").value = existing ? existing.loanAmount : 0;
+  document.getElementById("pr-holdback").value = existing ? existing.loanHoldback : 0;
+  document.getElementById("pr-sale").value =
+    existing && existing.salePrice !== null ? existing.salePrice : "";
+  document.getElementById("pr-saledate").value = existing ? existing.saleDate : "";
+  document.getElementById("pr-notes").value = existing ? existing.notes : "";
+
+  fillSelect(
+    document.getElementById("pr-status"),
+    PROJECT_STATUSES.map((s) => ({ value: s.value, label: s.label })),
+    existing ? existing.status : "before_closing"
+  );
+
+  pendingPartners = existing
+    ? partnersOf(existing.id).map((p) => ({ id: p.id, name: p.name }))
+    : DEFAULT_PARTNER_NAMES.map((name) => ({ id: null, name }));
+  renderPartnerEditor();
+
+  document.getElementById("pr-delete").classList.toggle("hidden", !existing || !isOwner(existing.id));
+  document.getElementById("project-modal").classList.remove("hidden");
+  document.getElementById("pr-name").focus();
+}
+
+function closeProjectModal() {
+  document.getElementById("project-modal").classList.add("hidden");
+  pendingPartners = [];
+}
+
+function renderPartnerEditor() {
+  const el = document.getElementById("pr-partners");
+  el.innerHTML = pendingPartners
+    .map(
+      (p, i) =>
+        '<div class="partner-row">' +
+        '<input type="text" data-partner-name="' + i + '" value="' + escapeHtml(p.name) + '" placeholder="Partner name" />' +
+        '<button type="button" class="icon-btn del" data-partner-del="' + i + '">Remove</button>' +
+        "</div>"
+    )
+    .join("");
+  el.querySelectorAll("[data-partner-name]").forEach((input) =>
+    input.addEventListener("input", () => {
+      pendingPartners[Number(input.dataset.partnerName)].name = input.value;
+    })
+  );
+  el.querySelectorAll("[data-partner-del]").forEach((b) =>
+    b.addEventListener("click", () => {
+      const i = Number(b.dataset.partnerDel);
+      const p = pendingPartners[i];
+      // A partner with expenses against them cannot just vanish — the money
+      // would lose its owner.
+      if (p.id && summaries.some((e) => e.partnerId === p.id)) {
+        alert(
+          "\u201c" + p.name + "\u201d has expenses recorded against them. " +
+          "Move those expenses to another partner first, or just rename this one."
+        );
+        return;
+      }
+      pendingPartners.splice(i, 1);
+      renderPartnerEditor();
+    })
+  );
+}
+
+async function saveProjectFromForm() {
+  const id = document.getElementById("pr-id").value;
+  const saleRaw = document.getElementById("pr-sale").value;
+  const purchaseRaw = document.getElementById("pr-purchase").value;
+
+  const record = {
+    name: document.getElementById("pr-name").value.trim(),
+    address: document.getElementById("pr-address").value.trim(),
+    status: document.getElementById("pr-status").value,
+    borrower: document.getElementById("pr-borrower").value.trim(),
+    lender: document.getElementById("pr-lender").value.trim(),
+    settlementDate: document.getElementById("pr-settlement").value,
+    loanAmount: parseFloat(document.getElementById("pr-loan").value) || 0,
+    loanHoldback: parseFloat(document.getElementById("pr-holdback").value) || 0,
+    purchasePrice: purchaseRaw === "" ? null : parseFloat(purchaseRaw),
+    salePrice: saleRaw === "" ? null : parseFloat(saleRaw),
+    saleDate: document.getElementById("pr-saledate").value,
+    notes: document.getElementById("pr-notes").value.trim(),
+  };
+
+  if (record.loanHoldback > record.loanAmount) {
+    alert("The construction holdback cannot be larger than the total note amount.");
+    return;
+  }
+
+  const names = pendingPartners.map((p) => p.name.trim()).filter(Boolean);
+  if (!names.length) {
+    alert("A project needs at least one partner.");
+    return;
+  }
+
+  let saved;
+  try {
+    saved = await Store.saveProject(record, id || null);
+    const i = projects.findIndex((p) => p.id === saved.id);
+    if (i > -1) projects[i] = saved;
+    else projects.push(saved);
+
+    await syncPartners(saved.id);
+    if (!id) memberships = await Store.getMemberships();
+  } catch (err) {
+    reportError("save this project", err);
+    return;
+  }
+
+  closeProjectModal();
+  if (id) {
+    renderProject();
+    document.getElementById("crumb-current").textContent = saved.name;
+  } else {
+    goProject(saved.id);
+  }
+}
+
+// Reconcile the partner rows in the editor against what is stored.
+async function syncPartners(projectId) {
+  const existing = partnersOf(projectId);
+  const keptIds = pendingPartners.filter((p) => p.id).map((p) => p.id);
+
+  for (const gone of existing.filter((p) => !keptIds.includes(p.id))) {
+    await Store.deletePartner(gone.id);
+    partners = partners.filter((p) => p.id !== gone.id);
+  }
+
+  for (let i = 0; i < pendingPartners.length; i++) {
+    const p = pendingPartners[i];
+    const name = p.name.trim();
+    if (!name) continue;
+    const before = p.id ? existing.find((x) => x.id === p.id) : null;
+    if (before && before.name === name && before.sort === i) continue;
+    const saved = await Store.savePartner({ projectId, name, sort: i }, p.id || null);
+    const idx = partners.findIndex((x) => x.id === saved.id);
+    if (idx > -1) partners[idx] = saved;
+    else partners.push(saved);
+  }
+}
+
+async function deleteActiveProject() {
+  const id = document.getElementById("pr-id").value;
+  const p = projects.find((x) => x.id === id);
+  if (!p) return;
+  const count = summaries.filter((e) => e.projectId === id).length;
+  if (
+    !confirm(
+      "Delete \u201c" + p.name + "\u201d and all " + count +
+      " of its expenses, draws and receipts?\n\nThis cannot be undone."
+    )
+  ) {
+    return;
+  }
+  if (prompt('Type the project name to confirm:') !== p.name) {
+    alert("Name did not match — nothing was deleted.");
+    return;
+  }
+  try {
+    await Store.deleteProject(id);
+  } catch (err) {
+    reportError("delete this project", err);
+    return;
+  }
+  projects = projects.filter((x) => x.id !== id);
+  partners = partners.filter((x) => x.projectId !== id);
+  summaries = summaries.filter((x) => x.projectId !== id);
+  allDraws = allDraws.filter((x) => x.projectId !== id);
+  memberships = memberships.filter((x) => x.projectId !== id);
+  closeProjectModal();
+  goDashboard();
+}
+
+// ===========================================================================
+// SHARING
+// ===========================================================================
+async function openShareModal() {
+  const p = activeProject();
+  if (!p) return;
+  document.getElementById("share-project-name").textContent =
+    "Anyone listed here can open \u201c" + p.name + "\u201d.";
+  document.getElementById("share-error").classList.add("hidden");
+  document.getElementById("share-modal").classList.remove("hidden");
+  fillSelect(
+    document.getElementById("sh-role"),
+    MEMBER_ROLES.map((r) => ({ value: r.value, label: r.label + " \u2014 " + r.hint })),
+    "editor"
+  );
+  await renderMembers();
+}
+
+async function renderMembers() {
+  const el = document.getElementById("member-list");
+  el.innerHTML = '<p class="empty">Loading\u2026</p>';
+  let list;
+  try {
+    list = await Store.listMembers(activeProjectId);
+  } catch (err) {
+    el.innerHTML = '<p class="empty">Could not load the access list.</p>';
+    console.error(err);
+    return;
+  }
+  el.innerHTML = list
+    .map(
+      (m) =>
+        '<div class="member-row">' +
+        '<span class="member-email">' + escapeHtml(m.email) + "</span>" +
+        '<span class="member-role">' + escapeHtml(m.role) + "</span>" +
+        (m.role === "owner"
+          ? '<span class="member-lock">owner</span>'
+          : '<button class="icon-btn del" data-member-del="' + escapeHtml(m.userId) + '">Remove</button>') +
+        "</div>"
+    )
+    .join("");
+  el.querySelectorAll("[data-member-del]").forEach((b) =>
+    b.addEventListener("click", async () => {
+      if (!confirm("Remove this person's access?")) return;
+      try {
+        await Store.removeMember(activeProjectId, b.dataset.memberDel);
+        memberships = await Store.getMemberships();
+        await renderMembers();
+      } catch (err) {
+        reportError("remove that person", err);
+      }
+    })
+  );
+}
+
+// ===========================================================================
+// EXPORT
+// ===========================================================================
 function exportCsv() {
-  const headers = ["Date", "Description", "Notes", "Section", "Paid By", "Amount", "Receipts"];
+  const p = activeProject();
+  const headers = ["Project", "Date", "Description", "Notes", "Section", "Paid By", "Amount", "Receipts"];
   const lines = [headers.join(",")];
   for (const e of expenses) {
     const row = [
+      p.name,
       e.date,
       e.description,
       e.notes || "",
       e.section,
-      PARTNERS[e.paidBy] || e.paidBy,
+      partnerName(e.partnerId),
       (Number(e.amount) || 0).toFixed(2),
-      (Array.isArray(e.receipts) ? e.receipts.length : 0),
+      Array.isArray(e.receipts) ? e.receipts.length : 0,
     ].map((v) => `"${String(v ?? "").replace(/"/g, '""')}"`);
     lines.push(row.join(","));
   }
-  download("expenses.csv", "text/csv", lines.join("\r\n"));
+  download(p.name.replace(/[^\w.-]+/g, "-") + "-expenses.csv", "text/csv", lines.join("\r\n"));
 }
 
 function download(filename, type, content) {
@@ -551,7 +1093,70 @@ function download(filename, type, content) {
   URL.revokeObjectURL(url);
 }
 
-// ---------- Wire up ----------
+// ===========================================================================
+// WIRE UP
+// ===========================================================================
+document.getElementById("home-btn").addEventListener("click", goDashboard);
+document.getElementById("crumb-home").addEventListener("click", goDashboard);
+document.getElementById("new-project-btn").addEventListener("click", () => openProjectModal(null));
+document.getElementById("status-filter").addEventListener("change", renderDashboard);
+document.getElementById("settings-btn").addEventListener("click", () => openProjectModal(activeProjectId));
+document.getElementById("share-btn").addEventListener("click", openShareModal);
+
+document.getElementById("p-status").addEventListener("change", async (ev) => {
+  const p = activeProject();
+  const previous = p.status;
+  const next = ev.target.value;
+  try {
+    const saved = await Store.saveProject({ ...p, status: next }, p.id);
+    projects[projects.findIndex((x) => x.id === p.id)] = saved;
+  } catch (err) {
+    ev.target.value = previous;
+    reportError("change the status", err);
+    return;
+  }
+  renderProject();
+});
+
+document.getElementById("project-form").addEventListener("submit", (ev) => {
+  ev.preventDefault();
+  saveProjectFromForm();
+});
+document.getElementById("pr-cancel").addEventListener("click", closeProjectModal);
+document.getElementById("pr-delete").addEventListener("click", deleteActiveProject);
+document.getElementById("pr-add-partner").addEventListener("click", () => {
+  pendingPartners.push({ id: null, name: "" });
+  renderPartnerEditor();
+});
+document.getElementById("project-modal").addEventListener("click", (e) => {
+  if (e.target.id === "project-modal") closeProjectModal();
+});
+
+document.getElementById("share-form").addEventListener("submit", async (ev) => {
+  ev.preventDefault();
+  const errEl = document.getElementById("share-error");
+  errEl.classList.add("hidden");
+  try {
+    await Store.addMember(
+      activeProjectId,
+      document.getElementById("sh-email").value.trim(),
+      document.getElementById("sh-role").value
+    );
+    document.getElementById("sh-email").value = "";
+    memberships = await Store.getMemberships();
+    await renderMembers();
+  } catch (err) {
+    errEl.textContent = err.message || "Could not add that person.";
+    errEl.classList.remove("hidden");
+  }
+});
+document.getElementById("share-close").addEventListener("click", () =>
+  document.getElementById("share-modal").classList.add("hidden")
+);
+document.getElementById("share-modal").addEventListener("click", (e) => {
+  if (e.target.id === "share-modal") e.currentTarget.classList.add("hidden");
+});
+
 document.getElementById("add-btn").addEventListener("click", () => openModal(null));
 document.getElementById("cancel-btn").addEventListener("click", closeModal);
 document.getElementById("group-select").addEventListener("change", renderGroups);
@@ -562,26 +1167,27 @@ document.getElementById("modal").addEventListener("click", (e) => {
 });
 document.getElementById("add-draw-btn").addEventListener("click", () => openDrawModal(null));
 document.getElementById("draw-cancel-btn").addEventListener("click", closeDrawModal);
+document.getElementById("draw-modal").addEventListener("click", (e) => {
+  if (e.target.id === "draw-modal") closeDrawModal();
+});
 document.getElementById("f-receipts").addEventListener("change", (e) => {
   handleReceiptFiles(e.target.files);
   e.target.value = "";
 });
 document.getElementById("lightbox").addEventListener("click", closeLightbox);
-document.getElementById("draw-modal").addEventListener("click", (e) => {
-  if (e.target.id === "draw-modal") closeDrawModal();
-});
 document.addEventListener("keydown", (e) => {
-  if (e.key === "Escape") {
-    if (!document.getElementById("lightbox").classList.contains("hidden")) {
-      closeLightbox();
-      return;
-    }
-    closeModal();
-    closeDrawModal();
+  if (e.key !== "Escape") return;
+  if (!document.getElementById("lightbox").classList.contains("hidden")) {
+    closeLightbox();
+    return;
   }
+  closeModal();
+  closeDrawModal();
+  closeProjectModal();
+  document.getElementById("share-modal").classList.add("hidden");
 });
+
 document.getElementById("auth-btn").addEventListener("click", async () => {
-  if (Store.mode !== "cloud") return;
   if (!currentUser) {
     openLoginModal();
     return;
@@ -599,6 +1205,7 @@ document.getElementById("auth-btn").addEventListener("click", async () => {
     if (currentUser) onSignedOut();
   }
 });
+
 document.getElementById("login-form").addEventListener("submit", async (ev) => {
   ev.preventDefault();
   const errEl = document.getElementById("login-error");
@@ -614,10 +1221,11 @@ document.getElementById("login-form").addEventListener("submit", async (ev) => {
   }
 });
 
-// ---------- Boot ----------
-let currentUser = null;
-let booted = false;
+window.addEventListener("hashchange", route);
 
+// ===========================================================================
+// BOOT
+// ===========================================================================
 function openLoginModal() {
   document.getElementById("login-error").classList.add("hidden");
   document.getElementById("login-modal").classList.remove("hidden");
@@ -631,18 +1239,13 @@ function closeLoginModal() {
 
 function setAppEnabled(enabled) {
   document
-    .querySelectorAll(".toolbar button, .toolbar label, .toolbar select, #add-draw-btn")
+    .querySelectorAll("#project-view .toolbar button, #project-view .toolbar label, #add-draw-btn")
     .forEach((el) => el.classList.toggle("disabled", !enabled));
 }
 
 function setAuthUi(user) {
   const status = document.getElementById("auth-status");
   const btn = document.getElementById("auth-btn");
-  if (Store.mode === "local") {
-    status.textContent = "Offline mode \u2014 saved in this browser only";
-    btn.classList.add("hidden");
-    return;
-  }
   btn.classList.remove("hidden");
   if (user) {
     status.textContent = "Synced \u00b7 " + user.email;
@@ -652,10 +1255,28 @@ function setAuthUi(user) {
     btn.textContent = "Sign In";
   }
 }
+
+function fillStaticSelects() {
+  fillSelect(
+    document.getElementById("p-status"),
+    PROJECT_STATUSES.map((s) => ({ value: s.value, label: s.label }))
+  );
+  document.getElementById("status-filter").innerHTML =
+    '<option value="">All statuses</option>' +
+    PROJECT_STATUSES.map(
+      (s) => '<option value="' + s.value + '">' + escapeHtml(s.label) + "</option>"
+    ).join("");
+}
+
 async function loadAll() {
-  expenses = await Store.getExpenses();
-  draws = await Store.getDraws();
-  render();
+  [projects, partners, memberships, summaries, allDraws] = await Promise.all([
+    Store.getProjects(),
+    Store.getPartners(),
+    Store.getMemberships(),
+    Store.getExpenseSummaries(),
+    Store.getDraws(null),
+  ]);
+  await route();
 }
 
 async function onSignedIn(user) {
@@ -663,12 +1284,10 @@ async function onSignedIn(user) {
   booted = true;
   setAuthUi(user);
   closeLoginModal();
-  setAppEnabled(true);
   try {
     await loadAll();
   } catch (err) {
-    document.getElementById("auth-status").textContent =
-      "Signed in \u00b7 could not load data";
+    document.getElementById("auth-status").textContent = "Signed in \u00b7 could not load data";
     reportError("load your data", err);
   }
 }
@@ -676,38 +1295,38 @@ async function onSignedIn(user) {
 function onSignedOut() {
   currentUser = null;
   booted = true;
+  projects = [];
+  partners = [];
+  memberships = [];
+  summaries = [];
+  allDraws = [];
   expenses = [];
   draws = [];
   setAuthUi(null);
-  setAppEnabled(false);
-  render();
+  renderDashboard();
   openLoginModal();
 }
 
 async function boot() {
-  await Store.init();
+  fillStaticSelects();
 
-  if (Store.mode === "local") {
-    setAuthUi(null);
-    setAppEnabled(true);
-    await loadAll();
+  if (!(await Store.init())) {
+    document.getElementById("auth-status").textContent =
+      "Not connected \u2014 add your Supabase URL and key to config.js";
     return;
   }
 
   // Restoring a saved session takes a moment. Say so instead of flashing an
-  // empty ledger that looks like the data is gone.
+  // empty dashboard that looks like the data is gone.
   document.getElementById("auth-status").textContent = "Restoring session\u2026";
 
-  // Supabase re-fires auth events on load, on token refresh and on tab focus.
-  // Only react when the signed-in identity actually changes, so a routine
-  // token refresh never wipes the screen or reloads the ledger.
   Store.onAuthChange((user) => {
-    if (user && currentUser && user.id === currentUser.id) return;
+    if (user && currentUser && user.id === currentUser.id) return; // token refresh
     if (user) onSignedIn(user);
     else if (currentUser || !booted) onSignedOut();
   });
 
-  // Safety net in case the initial auth event never arrives.
+  // Safety net in case the auth event never arrives.
   const user = await Store.currentUser();
   if (user && !currentUser) onSignedIn(user);
   else if (!user && !currentUser) onSignedOut();

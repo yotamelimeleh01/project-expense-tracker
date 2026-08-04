@@ -1,17 +1,12 @@
 "use strict";
 
 // ---------------------------------------------------------------------------
-// Storage abstraction.
+// Supabase-backed storage.
 //
-// Two interchangeable backends behind one async API:
-//   * LocalStore    - browser localStorage, works with no setup (single device)
-//   * SupabaseStore - Postgres + Auth, syncs across every device you log into
-//
-// The app picks SupabaseStore automatically when config.js has credentials.
+// Every read and write is scoped to a project, and Row Level Security decides
+// which projects you are allowed to see at all — the client never filters for
+// security, only for convenience.
 // ---------------------------------------------------------------------------
-
-const LS_EXPENSES = "mpet.expenses.v3";
-const LS_DRAWS = "mpet.draws.v1";
 
 function newId() {
   if (window.crypto && typeof window.crypto.randomUUID === "function") {
@@ -20,84 +15,26 @@ function newId() {
   return Date.now().toString(36) + Math.random().toString(36).slice(2, 10);
 }
 
-// ---------- Local (offline) backend ----------
-const LocalStore = {
-  mode: "local",
-  requiresAuth: false,
-
-  async init() {},
-
-  async getExpenses() {
-    return readArray(LS_EXPENSES, () => SEED_EXPENSES.map((e) => ({ id: newId(), ...e })));
-  },
-
-  async getDraws() {
-    return readArray(LS_DRAWS, () => SEED_DRAWS.map((d) => ({ id: newId(), ...d })));
-  },
-
-  async saveExpense(record, id) {
-    const list = await this.getExpenses();
-    const saved = id ? { ...list.find((e) => e.id === id), ...record, id } : { id: newId(), ...record };
-    const next = id ? list.map((e) => (e.id === id ? saved : e)) : list.concat([saved]);
-    writeArray(LS_EXPENSES, next);
-    return saved;
-  },
-
-  async deleteExpense(id) {
-    const list = await this.getExpenses();
-    writeArray(LS_EXPENSES, list.filter((e) => e.id !== id));
-  },
-
-  async saveDraw(record, id) {
-    const list = await this.getDraws();
-    const saved = id ? { ...list.find((d) => d.id === id), ...record, id } : { id: newId(), ...record };
-    const next = id ? list.map((d) => (d.id === id ? saved : d)) : list.concat([saved]);
-    writeArray(LS_DRAWS, next);
-    return saved;
-  },
-
-  async deleteDraw(id) {
-    const list = await this.getDraws();
-    writeArray(LS_DRAWS, list.filter((d) => d.id !== id));
-  },
-};
-
-function readArray(key, fallback) {
-  const raw = localStorage.getItem(key);
-  if (raw) {
-    try {
-      const parsed = JSON.parse(raw);
-      if (Array.isArray(parsed)) return parsed;
-    } catch (e) {
-      console.warn("Corrupt data in " + key + ", using seed.", e);
-    }
-  }
-  return fallback();
-}
-
-function writeArray(key, list) {
-  try {
-    localStorage.setItem(key, JSON.stringify(list));
-  } catch (err) {
-    alert(
-      "Browser storage is full — that change could not be saved.\n\n" +
-        "Offline mode is limited to about 5 MB. Connect Supabase (see README) " +
-        "for unlimited receipt photos and cross-device sync."
-    );
-    throw err;
-  }
-}
-
-// ---------- Supabase (cloud) backend ----------
-const SupabaseStore = {
-  mode: "cloud",
-  requiresAuth: true,
+const Store = {
   client: null,
+  ready: false,
 
   async init() {
+    if (
+      !SUPABASE_CONFIG.url ||
+      !SUPABASE_CONFIG.anonKey ||
+      !window.supabase ||
+      typeof window.supabase.createClient !== "function"
+    ) {
+      this.ready = false;
+      return false;
+    }
     this.client = window.supabase.createClient(SUPABASE_CONFIG.url, SUPABASE_CONFIG.anonKey);
+    this.ready = true;
+    return true;
   },
 
+  // ---------- Auth ----------
   async currentUser() {
     const { data } = await this.client.auth.getSession();
     return data.session ? data.session.user : null;
@@ -137,24 +74,127 @@ const SupabaseStore = {
     throw new Error("Not signed in \u2014 could not reach your data.");
   },
 
-  async getExpenses() {
+  async select(table, columns, build) {
     await this.requireSession();
-    const { data, error } = await this.client
-      .from("expenses")
-      .select("*")
-      .order("date", { ascending: true });
+    let q = this.client.from(table).select(columns || "*");
+    if (build) q = build(q);
+    const { data, error } = await q;
     if (error) throw error;
-    return data.map(expenseFromRow);
+    return data || [];
   },
 
-  async getDraws() {
-    await this.requireSession();
-    const { data, error } = await this.client
-      .from("draws")
-      .select("*")
-      .order("date", { ascending: true });
+  // ---------- Projects ----------
+  async getProjects() {
+    const rows = await this.select("projects", "*", (q) =>
+      q.order("created_at", { ascending: true })
+    );
+    return rows.map(projectFromRow);
+  },
+
+  async saveProject(record, id) {
+    const session = await this.requireSession();
+    const row = projectToRow(record, id || newId());
+    if (!id) row.created_by = session.user.id;
+    const { data, error } = await this.client.from("projects").upsert(row).select().single();
     if (error) throw error;
-    return data.map(drawFromRow);
+    return projectFromRow(data);
+  },
+
+  async deleteProject(id) {
+    await this.requireSession();
+    const { error } = await this.client.from("projects").delete().eq("id", id);
+    if (error) throw error;
+  },
+
+  // ---------- Partners (whose money is in the deal) ----------
+  async getPartners() {
+    const rows = await this.select("project_partners", "*", (q) =>
+      q.order("sort", { ascending: true })
+    );
+    return rows.map(partnerFromRow);
+  },
+
+  async savePartner(record, id) {
+    await this.requireSession();
+    const row = {
+      id: id || newId(),
+      project_id: record.projectId,
+      name: record.name,
+      sort: Number(record.sort) || 0,
+    };
+    const { data, error } = await this.client
+      .from("project_partners")
+      .upsert(row)
+      .select()
+      .single();
+    if (error) throw error;
+    return partnerFromRow(data);
+  },
+
+  async deletePartner(id) {
+    await this.requireSession();
+    const { error } = await this.client.from("project_partners").delete().eq("id", id);
+    if (error) throw error;
+  },
+
+  // ---------- Members (who can open the project) ----------
+  // Every membership row for every project you belong to. Gives both your own
+  // role (what you're allowed to do) and the head count shown on each card.
+  async getMemberships() {
+    const rows = await this.select("project_members", "project_id,user_id,role");
+    return rows.map((r) => ({ projectId: r.project_id, userId: r.user_id, role: r.role }));
+  },
+
+  async listMembers(projectId) {
+    await this.requireSession();
+    const { data, error } = await this.client.rpc("project_members_list", { pid: projectId });
+    if (error) throw error;
+    return (data || []).map((r) => ({ userId: r.user_id, email: r.email, role: r.role }));
+  },
+
+  async addMember(projectId, email, role) {
+    await this.requireSession();
+    const { error } = await this.client.rpc("project_member_add", {
+      pid: projectId,
+      member_email: email,
+      member_role: role,
+    });
+    if (error) throw error;
+  },
+
+  async removeMember(projectId, userId) {
+    await this.requireSession();
+    const { error } = await this.client.rpc("project_member_remove", {
+      pid: projectId,
+      member_user_id: userId,
+    });
+    if (error) throw error;
+  },
+
+  // ---------- Ledger ----------
+  // The dashboard needs every project's totals but none of the receipt images,
+  // which are base64 and by far the heaviest column. Ask for just the numbers.
+  async getExpenseSummaries() {
+    const rows = await this.select(
+      "expenses",
+      "id,project_id,date,description,section,partner_id,paid_by,amount"
+    );
+    return rows.map(expenseFromRow);
+  },
+
+  async getExpenses(projectId) {
+    const rows = await this.select("expenses", "*", (q) =>
+      q.eq("project_id", projectId).order("date", { ascending: true })
+    );
+    return rows.map(expenseFromRow);
+  },
+
+  async getDraws(projectId) {
+    const rows = await this.select("draws", "*", (q) => {
+      const scoped = projectId ? q.eq("project_id", projectId) : q;
+      return scoped.order("date", { ascending: true });
+    });
+    return rows.map(drawFromRow);
   },
 
   async saveExpense(record, id) {
@@ -186,14 +226,67 @@ const SupabaseStore = {
   },
 };
 
+// ---------- Row mappers ----------
+function num(v) {
+  return v === null || v === undefined || v === "" ? null : Number(v);
+}
+
+function projectToRow(p, id) {
+  return {
+    id,
+    name: p.name,
+    address: p.address || null,
+    status: p.status || "before_closing",
+    borrower: p.borrower || null,
+    lender: p.lender || null,
+    settlement_date: p.settlementDate || null,
+    loan_amount: Number(p.loanAmount) || 0,
+    loan_holdback: Number(p.loanHoldback) || 0,
+    purchase_price: num(p.purchasePrice),
+    sale_price: num(p.salePrice),
+    sale_date: p.saleDate || null,
+    notes: p.notes || null,
+  };
+}
+
+function projectFromRow(r) {
+  return {
+    id: r.id,
+    name: r.name || "Untitled project",
+    address: r.address || "",
+    status: r.status || "before_closing",
+    borrower: r.borrower || "",
+    lender: r.lender || "",
+    settlementDate: r.settlement_date || "",
+    loanAmount: Number(r.loan_amount) || 0,
+    loanHoldback: Number(r.loan_holdback) || 0,
+    purchasePrice: num(r.purchase_price),
+    salePrice: num(r.sale_price),
+    saleDate: r.sale_date || "",
+    notes: r.notes || "",
+    createdBy: r.created_by || null,
+    createdAt: r.created_at || "",
+  };
+}
+
+function partnerFromRow(r) {
+  return {
+    id: r.id,
+    projectId: r.project_id,
+    name: r.name || "Partner",
+    sort: Number(r.sort) || 0,
+  };
+}
+
 function expenseToRow(e, id) {
   return {
     id,
+    project_id: e.projectId,
     date: e.date || null,
     description: e.description,
     notes: e.notes || null,
     section: e.section,
-    paid_by: e.paidBy,
+    partner_id: e.partnerId || null,
     amount: Number(e.amount) || 0,
     receipts: Array.isArray(e.receipts) ? e.receipts : [],
   };
@@ -202,11 +295,12 @@ function expenseToRow(e, id) {
 function expenseFromRow(r) {
   return {
     id: r.id,
+    projectId: r.project_id,
     date: r.date || "",
     description: r.description || "",
     notes: r.notes || "",
     section: r.section || "",
-    paidBy: r.paid_by,
+    partnerId: r.partner_id || null,
     amount: Number(r.amount) || 0,
     receipts: Array.isArray(r.receipts) ? r.receipts : [],
   };
@@ -215,6 +309,7 @@ function expenseFromRow(r) {
 function drawToRow(d, id) {
   return {
     id,
+    project_id: d.projectId,
     date: d.date || null,
     note: d.note || null,
     amount: Number(d.amount) || 0,
@@ -224,19 +319,9 @@ function drawToRow(d, id) {
 function drawFromRow(r) {
   return {
     id: r.id,
+    projectId: r.project_id,
     date: r.date || "",
     note: r.note || "",
     amount: Number(r.amount) || 0,
   };
 }
-
-function isCloudConfigured() {
-  return Boolean(
-    SUPABASE_CONFIG.url &&
-      SUPABASE_CONFIG.anonKey &&
-      window.supabase &&
-      typeof window.supabase.createClient === "function"
-  );
-}
-
-const Store = isCloudConfigured() ? SupabaseStore : LocalStore;

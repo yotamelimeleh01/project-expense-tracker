@@ -3,107 +3,161 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Master Project Expense Tracker</title>
+  <title>Project Expense Tracker</title>
   <link rel="stylesheet" href="styles.css" />
 </head>
 <body>
   <header class="topbar">
     <div class="topbar-inner">
-      <h1>Master Project Expense Tracker</h1>
-      <p class="subtitle">Itemized Renovation, Closing, Insurance &amp; Operational Outlays</p>
-      <div class="meta-row">
-        <span><strong>Property:</strong> <span id="meta-property"></span></span>
-        <span><strong>Settlement Date:</strong> <span id="meta-date"></span></span>
-        <span><strong>Borrower:</strong> <span id="meta-borrower"></span></span>
+      <div class="brand-row">
+        <button id="home-btn" class="brand-btn" title="All projects">
+          <h1>Project Expense Tracker</h1>
+        </button>
+        <div class="auth-row">
+          <span id="auth-status" class="auth-status">Starting…</span>
+          <button id="auth-btn" class="btn btn-ghost hidden"></button>
+        </div>
       </div>
-      <div class="auth-row">
-        <span id="auth-status" class="auth-status">Starting…</span>
-        <button id="auth-btn" class="btn btn-ghost hidden"></button>
-      </div>
+      <nav id="crumbs" class="crumbs hidden">
+        <button id="crumb-home" class="crumb-link">All Projects</button>
+        <span class="crumb-sep">/</span>
+        <span id="crumb-current"></span>
+      </nav>
     </div>
   </header>
 
   <main class="container">
-    <!-- Headline: every dollar in the deal -->
-    <section class="allin" aria-label="Total all-in on this project">
-      <div class="allin-label">Total All-In On This Project</div>
-      <div class="allin-value" id="total-allin">$0.00</div>
-      <div class="allin-break" id="allin-breakdown"></div>
-    </section>
-
-    <!-- Summary cards -->
-    <section class="cards" aria-label="Summary totals">
-      <div class="card">
-        <div class="card-label">Partner A Total Paid</div>
-        <div class="card-value" id="total-a">$0.00</div>
-      </div>
-      <div class="card">
-        <div class="card-label">Partner Z Total Paid</div>
-        <div class="card-value accent" id="total-z">$0.00</div>
-      </div>
-      <div class="card">
-        <div class="card-label">Total Outlay To Date</div>
-        <div class="card-value" id="total-all">$0.00</div>
-      </div>
-    </section>
-
-    <!-- Cost breakdown by bucket -->
-    <section class="breakdown" aria-label="Cost breakdown">
-      <div class="breakdown-head">
-        <h2>Where The Money Went</h2>
-        <span class="breakdown-total" id="breakdown-total"></span>
-      </div>
-      <div id="breakdown-groups"></div>
-      <p class="breakdown-note" id="breakdown-note"></p>
-    </section>
-
-    <!-- Lender payoff -->
-    <section class="loan-panel" aria-label="Loan payoff">
-      <div class="loan-head">
-        <h2>Loan Payoff at Sale</h2>
-        <span class="loan-lender" id="loan-lender"></span>
-      </div>
-      <div class="cards loan-cards">
-        <div class="card">
-          <div class="card-label">Funded at Closing</div>
-          <div class="card-value" id="loan-funded">$0.00</div>
+    <!-- ================= DASHBOARD ================= -->
+    <section id="dashboard-view">
+      <section class="portfolio" aria-label="Portfolio summary">
+        <div class="portfolio-main">
+          <div class="allin-label">Total All-In Across All Projects</div>
+          <div class="allin-value" id="portfolio-allin">$0.00</div>
+          <div class="allin-break" id="portfolio-sub"></div>
         </div>
-        <div class="card">
-          <div class="card-label">Construction Draws Taken</div>
-          <div class="card-value accent" id="loan-draws">$0.00</div>
-        </div>
-        <div class="card">
-          <div class="card-label">Est. Payoff at Sale</div>
-          <div class="card-value payoff" id="loan-payoff">$0.00</div>
-        </div>
-      </div>
-      <p class="loan-note" id="loan-holdback-note"></p>
-      <div class="loan-draws-head">
-        <h3>Construction Draws</h3>
-        <button id="add-draw-btn" class="btn btn-primary">+ Add Draw</button>
-      </div>
-      <div id="draws-table"></div>
+        <div class="portfolio-stats" id="portfolio-stats"></div>
+      </section>
+
+      <section class="toolbar">
+        <button id="new-project-btn" class="btn btn-primary">+ New Project</button>
+        <div class="spacer"></div>
+        <label class="group-label">Show
+          <select id="status-filter">
+            <option value="">All statuses</option>
+          </select>
+        </label>
+      </section>
+
+      <div id="project-grid" class="project-grid"></div>
+      <p id="dashboard-empty" class="empty hidden">
+        No projects yet. Hit <strong>+ New Project</strong> to set up your first deal.
+      </p>
     </section>
 
-    <!-- Toolbar -->
-    <section class="toolbar">
-      <button id="add-btn" class="btn btn-primary">+ Add Expense</button>
-      <div class="spacer"></div>
-      <label class="group-label">Group by
-        <select id="group-select">
-          <option value="section">Section</option>
-          <option value="paidBy">Paid By</option>
-        </select>
-      </label>
-      <button id="export-btn" class="btn">Export CSV</button>
-      <button id="print-btn" class="btn">Print / PDF</button>
-    </section>
+    <!-- ================= SINGLE PROJECT ================= -->
+    <section id="project-view" class="hidden">
+      <section class="project-head">
+        <div class="project-head-main">
+          <h2 id="p-name"></h2>
+          <p class="project-address" id="p-address"></p>
+          <div class="meta-row" id="p-meta"></div>
+        </div>
+        <div class="project-head-actions">
+          <label class="status-picker">Status
+            <select id="p-status"></select>
+          </label>
+          <button id="settings-btn" class="btn">Project Details</button>
+          <button id="share-btn" class="btn">Who Has Access</button>
+        </div>
+      </section>
 
-    <!-- Grouped expense tables -->
-    <div id="groups"></div>
+      <!-- Headline: every dollar in the deal -->
+      <section class="allin" aria-label="Total all-in on this project">
+        <div class="allin-label">Total All-In On This Project</div>
+        <div class="allin-value" id="total-allin">$0.00</div>
+        <div class="allin-break" id="allin-breakdown"></div>
+      </section>
+
+      <!-- Profit, once a sale price is entered -->
+      <section class="profit-panel hidden" id="profit-panel" aria-label="Profit">
+        <div class="cards">
+          <div class="card">
+            <div class="card-label">Sale Price</div>
+            <div class="card-value" id="profit-sale">$0.00</div>
+          </div>
+          <div class="card">
+            <div class="card-label">Total All-In</div>
+            <div class="card-value" id="profit-allin">$0.00</div>
+          </div>
+          <div class="card">
+            <div class="card-label" id="profit-label">Projected Profit</div>
+            <div class="card-value" id="profit-value">$0.00</div>
+          </div>
+        </div>
+        <p class="profit-note" id="profit-note"></p>
+      </section>
+
+      <!-- Who paid what -->
+      <section class="cards" id="partner-cards" aria-label="Partner totals"></section>
+
+      <!-- Cost breakdown by bucket -->
+      <section class="breakdown" aria-label="Cost breakdown">
+        <div class="breakdown-head">
+          <h2>Where The Money Went</h2>
+          <span class="breakdown-total" id="breakdown-total"></span>
+        </div>
+        <div id="breakdown-groups"></div>
+        <p class="breakdown-note" id="breakdown-note"></p>
+      </section>
+
+      <!-- Lender payoff -->
+      <section class="loan-panel" aria-label="Loan payoff">
+        <div class="loan-head">
+          <h2>Loan Payoff at Sale</h2>
+          <span class="loan-lender" id="loan-lender"></span>
+        </div>
+        <div class="cards loan-cards">
+          <div class="card">
+            <div class="card-label">Funded at Closing</div>
+            <div class="card-value" id="loan-funded">$0.00</div>
+          </div>
+          <div class="card">
+            <div class="card-label">Construction Draws Taken</div>
+            <div class="card-value accent" id="loan-draws">$0.00</div>
+          </div>
+          <div class="card">
+            <div class="card-label">Est. Payoff at Sale</div>
+            <div class="card-value payoff" id="loan-payoff">$0.00</div>
+          </div>
+        </div>
+        <p class="loan-note" id="loan-holdback-note"></p>
+        <div class="loan-draws-head">
+          <h3>Construction Draws</h3>
+          <button id="add-draw-btn" class="btn btn-primary">+ Add Draw</button>
+        </div>
+        <div id="draws-table"></div>
+      </section>
+
+      <!-- Toolbar -->
+      <section class="toolbar">
+        <button id="add-btn" class="btn btn-primary">+ Add Expense</button>
+        <div class="spacer"></div>
+        <label class="group-label">Group by
+          <select id="group-select">
+            <option value="section">Section</option>
+            <option value="partner">Paid By</option>
+          </select>
+        </label>
+        <button id="export-btn" class="btn">Export CSV</button>
+        <button id="print-btn" class="btn">Print / PDF</button>
+      </section>
+
+      <!-- Grouped expense tables -->
+      <div id="groups"></div>
+    </section>
   </main>
 
-  <!-- Add/Edit modal -->
+  <!-- Add/Edit expense modal -->
   <div id="modal" class="modal-overlay hidden">
     <div class="modal">
       <h2 id="modal-title">Add Expense</h2>
@@ -120,13 +174,13 @@
             <input type="text" id="f-description" required />
           </label>
           <label>Paid By
-            <select id="f-paidBy" required></select>
+            <select id="f-partner" required></select>
           </label>
           <label>Section
             <select id="f-section"></select>
           </label>
           <label class="full">Notes / What's in this expense
-            <textarea id="f-notes" rows="3" placeholder="e.g. 2x sheets drywall, 4 gal paint, screws & caulk"></textarea>
+            <textarea id="f-notes" rows="3" placeholder="e.g. 2x sheets drywall, 4 gal paint, screws &amp; caulk"></textarea>
           </label>
           <div class="full receipts-field">
             <span class="field-label">Receipts</span>
@@ -157,7 +211,7 @@
             <input type="number" id="d-amount" step="0.01" min="0" required />
           </label>
           <label class="full">Note / Purpose
-            <input type="text" id="d-note" placeholder="e.g. Draw 1 - framing & rough-in" />
+            <input type="text" id="d-note" placeholder="e.g. Draw 1 - framing &amp; rough-in" />
           </label>
         </div>
         <div class="modal-actions">
@@ -168,11 +222,108 @@
     </div>
   </div>
 
+  <!-- New / edit project modal -->
+  <div id="project-modal" class="modal-overlay hidden">
+    <div class="modal modal-lg">
+      <h2 id="project-modal-title">New Project</h2>
+      <form id="project-form">
+        <input type="hidden" id="pr-id" />
+
+        <h3 class="form-section">The Property</h3>
+        <div class="form-grid">
+          <label class="full">Project Name
+            <input type="text" id="pr-name" required placeholder="e.g. 450 Spring Dr, Ocala" />
+          </label>
+          <label class="full">Property Address
+            <input type="text" id="pr-address" placeholder="450 Spring Dr, Ocala, FL 34472" />
+          </label>
+          <label>Status
+            <select id="pr-status"></select>
+          </label>
+          <label>Settlement Date
+            <input type="date" id="pr-settlement" />
+          </label>
+          <label>Borrower / Entity
+            <input type="text" id="pr-borrower" placeholder="e.g. Ryan Locksmith LLC" />
+          </label>
+          <label>Purchase Price ($)
+            <input type="number" id="pr-purchase" step="0.01" min="0" placeholder="optional" />
+          </label>
+        </div>
+
+        <h3 class="form-section">The Loan</h3>
+        <div class="form-grid">
+          <label class="full">Lender
+            <input type="text" id="pr-lender" placeholder="e.g. National Loan Funding LLC" />
+          </label>
+          <label>Total Note Amount ($)
+            <input type="number" id="pr-loan" step="0.01" min="0" value="0" />
+          </label>
+          <label>Construction Holdback ($)
+            <input type="number" id="pr-holdback" step="0.01" min="0" value="0" />
+          </label>
+        </div>
+        <p class="form-hint">
+          Funded at closing = note amount minus holdback. That funded amount counts
+          toward your all-in; the holdback only counts as you draw it.
+        </p>
+
+        <h3 class="form-section">Partners <span class="form-sub">whose money is in this deal</span></h3>
+        <div id="pr-partners" class="partner-editor"></div>
+        <button type="button" id="pr-add-partner" class="btn btn-small">+ Add Partner</button>
+
+        <h3 class="form-section">The Exit</h3>
+        <div class="form-grid">
+          <label>Sale Price ($)
+            <input type="number" id="pr-sale" step="0.01" min="0" placeholder="leave blank until sold" />
+          </label>
+          <label>Sale Date
+            <input type="date" id="pr-saledate" />
+          </label>
+          <label class="full">Notes
+            <textarea id="pr-notes" rows="2" placeholder="Anything worth remembering about this deal"></textarea>
+          </label>
+        </div>
+
+        <div class="modal-actions">
+          <button type="button" id="pr-delete" class="btn btn-danger hidden">Delete Project</button>
+          <div class="spacer"></div>
+          <button type="button" id="pr-cancel" class="btn">Cancel</button>
+          <button type="submit" class="btn btn-primary">Save Project</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <!-- Access / sharing modal -->
+  <div id="share-modal" class="modal-overlay hidden">
+    <div class="modal">
+      <h2>Who Has Access</h2>
+      <p class="modal-hint" id="share-project-name"></p>
+      <div id="member-list" class="member-list"></div>
+      <form id="share-form" class="share-form">
+        <div class="form-grid">
+          <label class="full">Add someone by the email they sign in with
+            <input type="email" id="sh-email" placeholder="partner@example.com" required />
+          </label>
+          <label class="full">Their role
+            <select id="sh-role"></select>
+          </label>
+        </div>
+        <p id="share-error" class="login-error hidden"></p>
+        <div class="modal-actions">
+          <button type="button" id="share-close" class="btn">Done</button>
+          <button type="submit" class="btn btn-primary">Add Person</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
   <!-- Sign-in modal -->
   <div id="login-modal" class="modal-overlay hidden">
     <div class="modal modal-sm">
       <h2>Sign In</h2>
-      <p class="modal-hint">Sign in to load and sync your project expenses.</p>
+      <p class="modal-hint">Sign in to load and sync your projects.</p>
       <form id="login-form">
         <div class="form-grid">
           <label class="full">Email
@@ -196,8 +347,7 @@
   </div>
 
   <footer class="footer">
-    Project Expense Tracker | <span id="foot-property"></span> ·
-    Synced to the cloud — changes appear on every signed-in device.
+    Project Expense Tracker — synced to the cloud, on every device you sign in from.
   </footer>
 
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.45.4/dist/umd/supabase.min.js"></script>

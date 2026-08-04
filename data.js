@@ -1,45 +1,33 @@
-// Seed data extracted from the "Master Project Expense Tracker" PDF.
-// Property: 450 Spring Dr, Ocala, FL 34472 | Settlement Date: 2026-07-08
-//
-// NOTE: Totals in this app are always computed from these line items.
-// Reconciled against the borrower's own ledger (Ocala.txt) and the ALTA
-// Settlement Statement (File 267286-50). Two items the first PDF omitted have
-// been added: Partner A's $235 water service deposit, and Partner Z's
-// $5,934.98 pre-closing deposit (earnest money + additional deposit paid
-// before settlement; part of the $29,684 "Closing" figure that the ALTA's
-// itemized fees alone did not cover). Totals now match the header exactly:
-// A $547.29 / Z $31,772.62 / $32,319.91.
+"use strict";
 
-const PROPERTY = {
-  name: "450 Spring Dr, Ocala, FL 34472",
-  borrower: "Ryan Locksmith LLC",
-  settlementDate: "2026-07-08",
-};
+// ---------------------------------------------------------------------------
+// Shared vocabulary. Everything that used to be hard-coded for one property
+// (address, lender, loan amounts, partner names) now lives on each project row
+// in the database. What is left here is the stuff that is the same for every
+// deal: the sections you file an expense under and the buckets they roll into.
+// ---------------------------------------------------------------------------
 
-// Loan structure from the ALTA (File 267286-50).
-// Total note is $137,700, of which $42,500 is a construction holdback that is
-// drawn over time. Funded principal at closing = amount - holdback = $95,200.
-// Payoff owed at sale = funded principal + construction draws taken
-// (excludes interest & exit fees).
-const LOAN = {
-  lender: "National Loan Funding LLC",
-  amount: 137700,
-  holdback: 42500,
-};
+// Lifecycle of a deal, in order.
+const PROJECT_STATUSES = [
+  { value: "before_closing", label: "Before Closing", hint: "Under contract, not yet yours" },
+  { value: "closed",         label: "Closed",         hint: "Purchased, work not started" },
+  { value: "in_progress",    label: "In Progress",    hint: "Renovation underway" },
+  { value: "done",           label: "Done",           hint: "Work finished, ready to sell" },
+  { value: "sold",           label: "Sold",           hint: "Closed out — profit is final" },
+];
 
-// Construction draws pulled from the holdback (none drawn yet).
-const SEED_DRAWS = [];
+function statusLabel(value) {
+  const s = PROJECT_STATUSES.find((x) => x.value === value);
+  return s ? s.label : "Before Closing";
+}
 
-
-// The four everyday sections the tracker is organized by.
+// The four everyday sections every project is organized by.
 const SECTIONS = [
   "Closing & Deal Costs",
   "Utilities, Insurance, Loan & Taxes",
   "Materials, Tools & Supplies",
   "Contractors, Crew & Services",
 ];
-
-const PARTNERS = { A: "Partner A", Z: "Partner Z" };
 
 // Roll-up buckets that answer the three questions that actually matter:
 // what did it cost to BUY it, to FIX it, and to HOLD it.
@@ -66,39 +54,12 @@ const COST_GROUPS = [
   },
 ];
 
-// paidBy: "A" | "Z"
-const SEED_EXPENSES = [
-  // Closing & Deal Costs — everyone who took a cut at settlement
-  { date: "", description: "Earnest Money & Deposit Paid Before Closing (part of $29,684 closing)", section: SECTIONS[0], paidBy: "Z", amount: 5934.98 },
-  { date: "2026-07-08", description: "Origination Fee (Pay to Sherman Bridge)", section: SECTIONS[0], paidBy: "Z", amount: 2754.0 },
-  { date: "2026-07-08", description: "Prepaid Interest (07/08/26 - 08/01/26)", section: SECTIONS[0], paidBy: "Z", amount: 908.82 },
-  { date: "2026-07-08", description: "Document Prep Fee (National Loan Funding LLC)", section: SECTIONS[0], paidBy: "Z", amount: 1995.0 },
-  { date: "2026-07-08", description: "Credit Report Fee (National Loan Funding LLC)", section: SECTIONS[0], paidBy: "Z", amount: 65.0 },
-  { date: "2026-07-08", description: "Title Settlement / Closing Fee (First International Title)", section: SECTIONS[0], paidBy: "Z", amount: 895.0 },
-  { date: "2026-07-08", description: "Title Search (First International Title)", section: SECTIONS[0], paidBy: "Z", amount: 200.0 },
-  { date: "2026-07-08", description: "Environmental Protection Endorsement (FL 8.1-21)", section: SECTIONS[0], paidBy: "Z", amount: 100.0 },
-  { date: "2026-07-08", description: "Lender's Title Insurance ($137,700 Policy)", section: SECTIONS[0], paidBy: "Z", amount: 628.5 },
-  { date: "2026-07-08", description: "Owner's Title Insurance ($112,000 Policy)", section: SECTIONS[0], paidBy: "Z", amount: 635.0 },
-  { date: "2026-07-08", description: "Government Recording Fees (Deed & Mortgage)", section: SECTIONS[0], paidBy: "Z", amount: 198.5 },
-  { date: "2026-07-08", description: "Affidavits Recording (Death Cert & LLC)", section: SECTIONS[0], paidBy: "Z", amount: 37.0 },
-  { date: "2026-07-08", description: "State Intangible Tax", section: SECTIONS[0], paidBy: "Z", amount: 275.4 },
-  { date: "2026-07-08", description: "Homeowner's Insurance Premium (Runnels Insurance)", section: SECTIONS[0], paidBy: "Z", amount: 1927.55 },
-  { date: "2026-07-08", description: "Assignment Fee 1 (Andrew The Home Buyer LLC)", section: SECTIONS[0], paidBy: "Z", amount: 3500.0 },
-  { date: "2026-07-08", description: "Assignment Fee 2 (I'm in Mud, LLC)", section: SECTIONS[0], paidBy: "Z", amount: 3500.0 },
-  { date: "2026-07-08", description: "Assignment Fee 3 (Pinellas Equities LLC)", section: SECTIONS[0], paidBy: "Z", amount: 5000.0 },
-  { date: "2026-07-08", description: "Brokerage Fee (New Western Acquisitions)", section: SECTIONS[0], paidBy: "Z", amount: 395.0 },
-  { date: "2026-07-08", description: "Closing Admin & Notary (Mobile Notary, Research, Tech)", section: SECTIONS[0], paidBy: "Z", amount: 734.25 },
+// A brand-new project starts with two money partners; rename or add more in
+// project settings.
+const DEFAULT_PARTNER_NAMES = ["Partner A", "Partner B"];
 
-  // Utilities, Insurance, Loan & Taxes — ongoing after closing
-  { date: "", description: "Water Service Deposit", section: SECTIONS[1], paidBy: "A", amount: 235.0 },
-
-  // Materials, Tools & Supplies
-  { date: "2026-07-16", description: "Home Depot - Materials & Hardware (Day 1)", section: SECTIONS[2], paidBy: "A", amount: 112.29 },
-  { date: "2026-07-17", description: "Home Depot - Materials & Lumber Supply", section: SECTIONS[2], paidBy: "Z", amount: 913.62 },
-
-  // Contractors, Crew & Services
-  { date: "", description: "On-Site Waste Dumpster Rental", section: SECTIONS[3], paidBy: "Z", amount: 450.0 },
-  { date: "", description: "Gardener Initial Property & Yard Cleanout", section: SECTIONS[3], paidBy: "Z", amount: 325.0 },
-  { date: "", description: "Carlos - Hotel Accommodation (4 Nights)", section: SECTIONS[3], paidBy: "A", amount: 200.0 },
-  { date: "", description: "Carlos - On-Site Direct Labor (2 Days)", section: SECTIONS[3], paidBy: "Z", amount: 400.0 },
+const MEMBER_ROLES = [
+  { value: "owner",  label: "Owner",  hint: "Full control, can share the project" },
+  { value: "editor", label: "Editor", hint: "Can add and change expenses" },
+  { value: "viewer", label: "Viewer", hint: "Read only" },
 ];
