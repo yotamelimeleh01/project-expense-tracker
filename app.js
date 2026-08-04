@@ -68,8 +68,67 @@ function render() {
   document.getElementById("total-all").textContent = money(t.total);
 
   renderAllIn(t);
+  renderBreakdown();
   renderLoan();
   renderGroups();
+}
+
+// ---------- Cost breakdown ----------
+// Buckets roll up from the sections in data.js, so every bucket total and the
+// grand total are derived from the same line items as everything else.
+// The three buckets sum to exactly the all-in headline figure.
+function breakdownGroups() {
+  const { funded } = loanNumbers();
+  return COST_GROUPS.map((g) => {
+    const lines = g.sections.map((name) => ({
+      label: name,
+      amount: expenses
+        .filter((e) => e.section === name)
+        .reduce((sum, e) => sum + (Number(e.amount) || 0), 0),
+    }));
+    if (g.includeLoanFunded) {
+      lines.push({ label: "Lender principal funded at closing", amount: funded, lender: true });
+    }
+    return { ...g, lines, total: lines.reduce((sum, l) => sum + l.amount, 0) };
+  });
+}
+
+function renderBreakdown() {
+  const groups = breakdownGroups();
+  const grand = groups.reduce((sum, g) => sum + g.total, 0);
+  document.getElementById("breakdown-total").textContent = money(grand) + " total";
+
+  document.getElementById("breakdown-groups").innerHTML = groups
+    .map((g) => {
+      const pct = grand > 0 ? (g.total / grand) * 100 : 0;
+      const lines = g.lines
+        .map(
+          (l) =>
+            '<div class="bd-line' + (l.lender ? " lender" : "") + '">' +
+            "<span>" + escapeHtml(l.label) + "</span>" +
+            '<span class="bd-line-amt">' + money(l.amount) + "</span>" +
+            "</div>"
+        )
+        .join("");
+      return (
+        '<div class="bd-group">' +
+        '<div class="bd-top">' +
+        '<div class="bd-title">' + escapeHtml(g.label) +
+        '<span class="bd-pct">' + pct.toFixed(1) + "% of all-in</span></div>" +
+        '<div class="bd-total">' + money(g.total) + "</div>" +
+        "</div>" +
+        '<div class="bd-bar"><span style="width:' + pct.toFixed(2) + '%"></span></div>' +
+        '<p class="bd-blurb">' + escapeHtml(g.blurb) + "</p>" +
+        '<div class="bd-lines">' + lines + "</div>" +
+        "</div>"
+      );
+    })
+    .join("");
+
+  document.getElementById("breakdown-note").textContent =
+    "These three buckets add up to the " + money(grand) +
+    " all-in figure above. Construction draws are not counted here — they " +
+    "reimburse expenses already listed, and are tracked as lender payoff below.";
 }
 
 // ---------- Headline all-in figure ----------

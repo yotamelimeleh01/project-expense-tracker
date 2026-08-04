@@ -41,6 +41,31 @@ const SECTIONS = [
 
 const PARTNERS = { A: "Partner A", Z: "Partner Z" };
 
+// Roll-up buckets that answer the three questions that actually matter:
+// what did it cost to BUY it, to FIX it, and to HOLD it.
+// Each bucket is built from the sections above, so nothing has to be
+// re-tagged — add an expense to a section and it lands in the right bucket.
+const COST_GROUPS = [
+  {
+    label: "Cost To Purchase",
+    blurb:
+      "Everything it took to acquire the property — closing costs, fees, " +
+      "deposits, plus the loan principal the lender funded at settlement.",
+    sections: [SECTIONS[0]],
+    includeLoanFunded: true,
+  },
+  {
+    label: "Cost To Do The Work",
+    blurb: "The renovation itself — materials, tools, contractors and crew.",
+    sections: [SECTIONS[2], SECTIONS[3]],
+  },
+  {
+    label: "Cost To Hold",
+    blurb: "Carrying the property — utilities, insurance, loan payments and taxes.",
+    sections: [SECTIONS[1]],
+  },
+];
+
 // paidBy: "A" | "Z"
 const SEED_EXPENSES = [
   // Closing & Deal Costs — everyone who took a cut at settlement
