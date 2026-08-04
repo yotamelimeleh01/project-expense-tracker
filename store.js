@@ -91,11 +91,24 @@ const Store = {
     return rows.map(projectFromRow);
   },
 
+  // Insert and update are kept apart on purpose. An upsert would be re-checked
+  // against the INSERT policy ("you must be the creator"), which would stop an
+  // editor from so much as changing the status of someone else's project.
   async saveProject(record, id) {
     const session = await this.requireSession();
     const row = projectToRow(record, id || newId());
-    if (!id) row.created_by = session.user.id;
-    const { data, error } = await this.client.from("projects").upsert(row).select().single();
+    if (id) {
+      const { data, error } = await this.client
+        .from("projects")
+        .update(row)
+        .eq("id", id)
+        .select()
+        .single();
+      if (error) throw error;
+      return projectFromRow(data);
+    }
+    row.created_by = session.user.id;
+    const { data, error } = await this.client.from("projects").insert(row).select().single();
     if (error) throw error;
     return projectFromRow(data);
   },

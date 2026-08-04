@@ -312,7 +312,24 @@ create policy "editors write draws" on public.draws
   with check (public.can_edit_project(project_id));
 
 -- ---------------------------------------------------------------------------
--- 7. Move the existing single-project data into a real project.
+-- 7. Grants. RLS decides which rows; these decide which tables are reachable
+--    at all. Explicit so the script does not depend on default privileges.
+-- ---------------------------------------------------------------------------
+grant usage on schema public to authenticated;
+grant select on public.profiles to authenticated;
+grant select, insert, update, delete on
+  public.projects, public.project_members, public.project_partners,
+  public.expenses, public.draws
+  to authenticated;
+grant execute on function
+  public.is_project_member(text), public.is_project_owner(text),
+  public.can_edit_project(text), public.project_members_list(text),
+  public.project_member_add(text, text, text),
+  public.project_member_remove(text, uuid)
+  to authenticated;
+
+-- ---------------------------------------------------------------------------
+-- 8. Move the existing single-project data into a real project.
 --    Runs only if there are orphaned rows, so re-running is harmless.
 -- ---------------------------------------------------------------------------
 do $$
