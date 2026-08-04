@@ -260,6 +260,11 @@
             <input id="f-camera" type="file" accept="image/*" capture="environment" hidden />
             <label class="btn upload-btn" for="f-receipts">+ Add Receipt Photos</label>
             <input id="f-receipts" type="file" accept="image/*" multiple hidden />
+            <button type="button" id="scan-receipt" class="btn upload-btn hidden">Read The Receipt</button>
+            <div id="scan-status" class="scan-status hidden">
+              <span id="scan-text"></span>
+              <button type="button" id="scan-undo" class="linkish hidden">Undo</button>
+            </div>
             <div id="receipt-previews" class="receipt-previews"></div>
           </div>
         </div>
@@ -694,6 +699,7 @@
   <script src="config.js"></script>
   <script src="data.js"></script>
   <script src="offline.js"></script>
+  <script src="ocr.js"></script>
   <script src="store.js"></script>
   <script src="app.js"></script>
 </body>

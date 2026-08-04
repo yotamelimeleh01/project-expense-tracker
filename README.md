@@ -190,6 +190,29 @@ Days are calendar days, weekends included. A circular dependency is reported by
 name rather than silently accepted, and deleting a phase clears it from
 whatever was waiting on it.
 
+### Reading a receipt
+
+With a photo attached, **Read The Receipt** pulls the total, the date and the
+vendor off it and fills in whatever is still blank. It also guesses a category
+from the vendor's name, and if the vendor is already in the contractor
+directory it selects them, so the 1099 total keeps adding up without anyone
+choosing from a dropdown on a phone.
+
+Two rules make it safe to use. Nothing you typed is ever overwritten \u2014 a guess
+off a crumpled photo does not get to beat a figure somebody entered
+deliberately. And every field it filled is listed underneath with an **Undo**,
+because the point is to save typing, not to be trusted.
+
+The total is found by reading from the bottom up and skipping the lines that
+carry a number which is not what you paid: subtotals, sales tax, change,
+tendered cash, the last four of the card. Dates are read in whatever order they
+were printed. Two decimal places are required before anything counts as money,
+which is what keeps phone numbers and item codes out of the amount.
+
+The reader is 2 MB of WebAssembly and is only downloaded the first time you ask
+for it, never on load. It runs entirely on the phone \u2014 no photo is sent
+anywhere for reading.
+
 ### On site with no signal
 
 The app installs to a phone's home screen — open it in the browser and choose

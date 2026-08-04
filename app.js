@@ -1483,6 +1483,8 @@ function openModal(id) {
   removedReceiptPaths = [];
   pendingReceipts = (existing && Array.isArray(existing.receipts) ? existing.receipts : [])
     .map((entry) => ({ path: entry, blob: null, url: receiptSrc(entry) }));
+  scanUndo = null;
+  scanSay("", false);
   renderReceiptPreviews();
 
   fillSelect(
@@ -1787,6 +1789,9 @@ async function migrateLegacyReceipts() {
 
 function renderReceiptPreviews() {
   const el = document.getElementById("receipt-previews");
+  // Only a photo still on the device can be read; one already in Storage would
+  // have to be downloaded again to tell us what we saved from it.
+  document.getElementById("scan-receipt").classList.toggle("hidden", !scannablePhoto());
   if (!pendingReceipts.length) {
     el.innerHTML = '<span class="no-receipts">No photos attached yet.</span>';
     return;
@@ -1827,6 +1832,111 @@ async function handleReceiptFiles(fileList) {
     }
   }
   renderReceiptPreviews();
+}
+
+// ===========================================================================
+// READING A RECEIPT INTO THE FORM
+// ===========================================================================
+let scanUndo = null;
+
+function scanSay(message, undoable) {
+  const box = document.getElementById("scan-status");
+  document.getElementById("scan-text").textContent = message || "";
+  document.getElementById("scan-undo").classList.toggle("hidden", !undoable);
+  box.classList.toggle("hidden", !message);
+}
+
+// Only the photo just taken is offered, since that is the one being looked at.
+function scannablePhoto() {
+  for (let i = pendingReceipts.length - 1; i >= 0; i--) {
+    if (pendingReceipts[i].blob) return pendingReceipts[i];
+  }
+  return null;
+}
+
+async function scanReceipt() {
+  const shot = scannablePhoto();
+  if (!shot) return;
+  const btn = document.getElementById("scan-receipt");
+
+  if (!Ocr.ready() && !Offline.online()) {
+    scanSay("Reading a photo needs a connection the first time. Type it in for now.", false);
+    return;
+  }
+
+  btn.disabled = true;
+  scanSay("Reading the photo\u2026", false);
+  try {
+    const found = await Ocr.scan(shot.blob, (pct) => scanSay("Reading the photo\u2026 " + pct + "%", false));
+    applyScan(found);
+  } catch (err) {
+    console.warn("[ocr]", err);
+    scanSay("Could not read that photo. " + (err.message || ""), false);
+  } finally {
+    btn.disabled = false;
+  }
+}
+
+// Nothing the user typed is ever overwritten. A guess off a crumpled photo has
+// no business beating something somebody entered deliberately.
+function applyScan(found) {
+  const set = (id, value) => {
+    const el = document.getElementById(id);
+    scanUndo.push([id, el.value]);
+    el.value = value;
+  };
+  scanUndo = [];
+  const said = [];
+
+  const amountEl = document.getElementById("f-amount");
+  if (found.amount && !(parseFloat(amountEl.value) > 0)) {
+    set("f-amount", String(found.amount));
+    said.push(money(found.amount));
+  }
+  if (found.date && !document.getElementById("f-date").value) {
+    set("f-date", found.date);
+    said.push(found.date);
+  }
+  if (found.vendor && !document.getElementById("f-description").value.trim()) {
+    set("f-description", found.vendor);
+    said.push(found.vendor);
+  }
+
+  // The category is only suggested over the default, never over a choice.
+  const catEl = document.getElementById("f-category");
+  if (found.category && catEl.value === "General Construction" && found.category !== catEl.value) {
+    set("f-category", found.category);
+    document.getElementById("f-costtype").value = defaultCostTypeFor(found.category);
+    syncContractorField();
+    said.push(found.category);
+  }
+
+  const contractorId = matchContractor(found.vendor, contractors);
+  const contractorEl = document.getElementById("f-contractor");
+  if (contractorId && !contractorEl.value && !document.getElementById("f-contractor-field").classList.contains("hidden")) {
+    set("f-contractor", contractorId);
+    said.push(contractorName(contractorId));
+  }
+
+  if (!said.length) {
+    scanUndo = null;
+    scanSay(
+      found.amount || found.date || found.vendor
+        ? "Nothing new on that photo \u2014 what it found is already filled in."
+        : "Nothing legible on that photo. Type it in.",
+      false
+    );
+    return;
+  }
+  scanSay("From the photo: " + said.join(" \u00b7 ") + ". Check it against the paper.", true);
+}
+
+function undoScan() {
+  if (!scanUndo) return;
+  for (const [id, was] of scanUndo) document.getElementById(id).value = was;
+  syncContractorField();
+  scanUndo = null;
+  scanSay("Put back the way it was.", false);
 }
 
 function openLightbox(src) {
@@ -3313,6 +3423,8 @@ document.getElementById("f-camera").addEventListener("change", (e) => {
   handleReceiptFiles(e.target.files);
   e.target.value = "";
 });
+document.getElementById("scan-receipt").addEventListener("click", scanReceipt);
+document.getElementById("scan-undo").addEventListener("click", undoScan);
 document.getElementById("sync-now").addEventListener("click", syncNow);
 document.getElementById("sync-discard").addEventListener("click", discardStuck);
 

@@ -1,4 +1,4 @@
-// Service worker: what makes this thing usable in a driveway with one bar.
+﻿// Service worker: what makes this thing usable in a driveway with one bar.
 //
 // The rules are deliberately blunt:
 //   - the app itself is cached and served from the cache, so it opens instantly
@@ -8,7 +8,7 @@
 //
 // Bump CACHE whenever the shell changes. Old caches are deleted on activate,
 // so a stale version cannot outlive a deploy.
-const CACHE = "pet-shell-v6";
+const CACHE = "pet-shell-v7";
 
 const SHELL = [
   "./",
@@ -17,6 +17,7 @@ const SHELL = [
   "./config.js",
   "./data.js",
   "./offline.js",
+  "./ocr.js",
   "./store.js",
   "./app.js",
   "./manifest.webmanifest",

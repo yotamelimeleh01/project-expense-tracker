@@ -1236,3 +1236,27 @@ tbody td { padding: 10px 12px; font-size: 14px; border-bottom: 1px solid var(--l
 }
 .sync-text { flex: 1; }
 .sync-bar .btn { flex: none; }
+
+/* ---------- Reading a receipt ---------- */
+.scan-status {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-top: 8px;
+  padding: 8px 10px;
+  border: 1px solid var(--line);
+  border-left: 3px solid var(--blue);
+  border-radius: 6px;
+  background: #f8fafc;
+  font-size: 0.84rem;
+  color: var(--text);
+}
+.linkish {
+  border: 0;
+  background: none;
+  padding: 0;
+  color: var(--blue);
+  font: inherit;
+  text-decoration: underline;
+  cursor: pointer;
+}
