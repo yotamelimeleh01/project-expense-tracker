@@ -110,6 +110,15 @@
           <label>Section
             <select id="f-section"></select>
           </label>
+          <label class="full">Notes / What's in this expense
+            <textarea id="f-notes" rows="3" placeholder="e.g. 2x sheets drywall, 4 gal paint, screws & caulk"></textarea>
+          </label>
+          <div class="full receipts-field">
+            <span class="field-label">Receipts</span>
+            <label class="btn upload-btn" for="f-receipts">+ Add Receipt Photos</label>
+            <input id="f-receipts" type="file" accept="image/*" multiple hidden />
+            <div id="receipt-previews" class="receipt-previews"></div>
+          </div>
         </div>
         <div class="modal-actions">
           <button type="button" id="cancel-btn" class="btn">Cancel</button>
@@ -142,6 +151,11 @@
         </div>
       </form>
     </div>
+  </div>
+
+  <!-- Receipt image viewer -->
+  <div id="lightbox" class="modal-overlay hidden">
+    <img id="lightbox-img" alt="Receipt" />
   </div>
 
   <footer class="footer">

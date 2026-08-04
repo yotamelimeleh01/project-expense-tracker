@@ -6,6 +6,7 @@ const DRAWS_KEY = "mpet.draws.v1";
 // ---------- State ----------
 let expenses = load();
 let draws = loadDraws();
+let pendingReceipts = [];
 
 function uid() {
   return Date.now().toString(36) + Math.random().toString(36).slice(2, 8);
@@ -29,7 +30,39 @@ function seedWithIds() {
 }
 
 function save() {
-  localStorage.setItem(STORAGE_KEY, JSON.stringify(expenses));
+  try {
+    localStorage.setItem(STORAGE_KEY, JSON.stringify(expenses));
+  } catch (err) {
+    alert(
+      "Storage is full — this expense could not be saved with its photos.\n\n" +
+        "Browser storage is limited to about 5 MB. Try removing a few receipt " +
+        "photos from older expenses, or use Backup JSON to archive them."
+    );
+    throw err;
+  }
+}
+
+// Resize + compress an image file into a small JPEG data URL so many receipts
+// can fit inside the browser's ~5 MB localStorage budget.
+function compressImage(file, maxDim = 1200, quality = 0.65) {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onerror = () => reject(new Error("Could not read " + file.name));
+    reader.onload = () => {
+      const img = new Image();
+      img.onerror = () => reject(new Error("Could not decode " + file.name));
+      img.onload = () => {
+        const scale = Math.min(1, maxDim / Math.max(img.width, img.height));
+        const canvas = document.createElement("canvas");
+        canvas.width = Math.round(img.width * scale);
+        canvas.height = Math.round(img.height * scale);
+        canvas.getContext("2d").drawImage(img, 0, 0, canvas.width, canvas.height);
+        resolve(canvas.toDataURL("image/jpeg", quality));
+      };
+      img.src = reader.result;
+    };
+    reader.readAsDataURL(file);
+  });
 }
 
 function loadDraws() {
@@ -286,14 +319,30 @@ function renderGroups() {
   container.querySelectorAll("[data-del]").forEach((b) =>
     b.addEventListener("click", () => removeExpense(b.dataset.del))
   );
+  container.querySelectorAll("[data-lightbox]").forEach((img) =>
+    img.addEventListener("click", () => openLightbox(img.dataset.lightbox))
+  );
 }
 
 function rowHtml(e) {
   const badgeClass = e.paidBy === "A" ? "badge a" : "badge";
+  const receipts = Array.isArray(e.receipts) ? e.receipts : [];
+  const thumbs = receipts
+    .map(
+      (src, i) =>
+        '<img class="thumb" src="' + src + '" alt="Receipt ' + (i + 1) +
+        '" data-lightbox="' + src + '" />'
+    )
+    .join("");
+  const notes = e.notes
+    ? '<div class="row-notes">' + escapeHtml(e.notes) + "</div>"
+    : "";
+  const extras = notes || thumbs ? '<div class="row-extras">' + notes +
+    (thumbs ? '<div class="thumbs">' + thumbs + "</div>" : "") + "</div>" : "";
   return `
     <tr>
       <td class="col-date">${escapeHtml(e.date || "—")}</td>
-      <td>${escapeHtml(e.description)}</td>
+      <td>${escapeHtml(e.description)}${extras}</td>
       <td><span class="${badgeClass}">${escapeHtml(PARTNERS[e.paidBy] || e.paidBy)}</span></td>
       <td class="amount">${money(e.amount)}</td>
       <td class="actions-cell">
@@ -319,6 +368,9 @@ function openModal(id) {
   document.getElementById("f-date").value = existing ? existing.date || "" : "";
   document.getElementById("f-amount").value = existing ? existing.amount : "";
   document.getElementById("f-description").value = existing ? existing.description : "";
+  document.getElementById("f-notes").value = existing ? existing.notes || "" : "";
+  pendingReceipts = existing && Array.isArray(existing.receipts) ? existing.receipts.slice() : [];
+  renderReceiptPreviews();
 
   fillSelect(
     document.getElementById("f-paidBy"),
@@ -341,6 +393,56 @@ function openModal(id) {
 
 function closeModal() {
   document.getElementById("modal").classList.add("hidden");
+  pendingReceipts = [];
+}
+
+// ---------- Receipts ----------
+function renderReceiptPreviews() {
+  const el = document.getElementById("receipt-previews");
+  if (!pendingReceipts.length) {
+    el.innerHTML = '<span class="no-receipts">No photos attached yet.</span>';
+    return;
+  }
+  el.innerHTML = pendingReceipts
+    .map(
+      (src, i) =>
+        '<div class="preview">' +
+        '<img src="' + src + '" alt="Receipt ' + (i + 1) + '" data-lightbox="' + src + '" />' +
+        '<button type="button" class="remove-receipt" data-remove="' + i + '" title="Remove">&times;</button>' +
+        "</div>"
+    )
+    .join("");
+  el.querySelectorAll("[data-remove]").forEach((b) =>
+    b.addEventListener("click", () => {
+      pendingReceipts.splice(Number(b.dataset.remove), 1);
+      renderReceiptPreviews();
+    })
+  );
+  el.querySelectorAll("[data-lightbox]").forEach((img) =>
+    img.addEventListener("click", () => openLightbox(img.dataset.lightbox))
+  );
+}
+
+async function handleReceiptFiles(fileList) {
+  const files = Array.from(fileList).filter((f) => f.type.startsWith("image/"));
+  for (const file of files) {
+    try {
+      pendingReceipts.push(await compressImage(file));
+    } catch (err) {
+      alert(err.message);
+    }
+  }
+  renderReceiptPreviews();
+}
+
+function openLightbox(src) {
+  document.getElementById("lightbox-img").src = src;
+  document.getElementById("lightbox").classList.remove("hidden");
+}
+
+function closeLightbox() {
+  document.getElementById("lightbox").classList.add("hidden");
+  document.getElementById("lightbox-img").src = "";
 }
 
 function saveFromForm() {
@@ -349,17 +451,25 @@ function saveFromForm() {
     date: document.getElementById("f-date").value,
     amount: parseFloat(document.getElementById("f-amount").value) || 0,
     description: document.getElementById("f-description").value.trim(),
+    notes: document.getElementById("f-notes").value.trim(),
+    receipts: pendingReceipts.slice(),
     paidBy: document.getElementById("f-paidBy").value,
     section: document.getElementById("f-section").value,
   };
 
+  const previous = expenses.slice();
   if (id) {
     const idx = expenses.findIndex((e) => e.id === id);
     if (idx > -1) expenses[idx] = { ...expenses[idx], ...record };
   } else {
     expenses.push({ id: uid(), ...record });
   }
-  save();
+  try {
+    save();
+  } catch (err) {
+    expenses = previous; // keep the modal open so nothing is lost
+    return;
+  }
   closeModal();
   render();
 }
@@ -375,15 +485,17 @@ function removeExpense(id) {
 
 // ---------- Import / Export ----------
 function exportCsv() {
-  const headers = ["Date", "Description", "Section", "Paid By", "Amount"];
+  const headers = ["Date", "Description", "Notes", "Section", "Paid By", "Amount", "Receipts"];
   const lines = [headers.join(",")];
   for (const e of expenses) {
     const row = [
       e.date,
       e.description,
+      e.notes || "",
       e.section,
       PARTNERS[e.paidBy] || e.paidBy,
       (Number(e.amount) || 0).toFixed(2),
+      (Array.isArray(e.receipts) ? e.receipts.length : 0),
     ].map((v) => `"${String(v ?? "").replace(/"/g, '""')}"`);
     lines.push(row.join(","));
   }
@@ -391,7 +503,8 @@ function exportCsv() {
 }
 
 function backupJson() {
-  download("expense-backup.json", "application/json", JSON.stringify(expenses, null, 2));
+  const payload = { version: 2, expenses, draws };
+  download("expense-backup.json", "application/json", JSON.stringify(payload, null, 2));
 }
 
 function restoreJson(file) {
@@ -399,8 +512,14 @@ function restoreJson(file) {
   reader.onload = () => {
     try {
       const data = JSON.parse(reader.result);
-      if (!Array.isArray(data)) throw new Error("Not an array");
-      expenses = data.map((e) => ({ id: e.id || uid(), ...e }));
+      // v2 backups are { expenses, draws }; v1 backups were a bare array.
+      const list = Array.isArray(data) ? data : data.expenses;
+      if (!Array.isArray(list)) throw new Error("Unrecognized backup format");
+      expenses = list.map((e) => ({ id: e.id || uid(), ...e }));
+      if (!Array.isArray(data) && Array.isArray(data.draws)) {
+        draws = data.draws.map((d) => ({ id: d.id || uid(), ...d }));
+        saveDraws();
+      }
       save();
       render();
       alert(`Restored ${expenses.length} expenses.`);
@@ -445,11 +564,20 @@ document.getElementById("modal").addEventListener("click", (e) => {
 });
 document.getElementById("add-draw-btn").addEventListener("click", () => openDrawModal(null));
 document.getElementById("draw-cancel-btn").addEventListener("click", closeDrawModal);
+document.getElementById("f-receipts").addEventListener("change", (e) => {
+  handleReceiptFiles(e.target.files);
+  e.target.value = "";
+});
+document.getElementById("lightbox").addEventListener("click", closeLightbox);
 document.getElementById("draw-modal").addEventListener("click", (e) => {
   if (e.target.id === "draw-modal") closeDrawModal();
 });
 document.addEventListener("keydown", (e) => {
   if (e.key === "Escape") {
+    if (!document.getElementById("lightbox").classList.contains("hidden")) {
+      closeLightbox();
+      return;
+    }
     closeModal();
     closeDrawModal();
   }

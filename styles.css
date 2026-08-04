@@ -217,6 +217,8 @@ tbody td { padding: 10px 12px; font-size: 14px; border-bottom: 1px solid var(--l
   padding: 22px 24px;
   width: 100%;
   max-width: 560px;
+  max-height: 90vh;
+  overflow-y: auto;
   box-shadow: 0 20px 50px rgba(0,0,0,0.3);
 }
 .modal h2 { margin: 0 0 16px; font-size: 20px; }
@@ -234,6 +236,71 @@ tbody td { padding: 10px 12px; font-size: 14px; border-bottom: 1px solid var(--l
   color: var(--muted);
 }
 .form-grid label.full { grid-column: 1 / -1; }
+.form-grid textarea {
+  font: inherit;
+  padding: 8px 10px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  resize: vertical;
+  color: var(--text);
+}
+
+/* Receipts */
+.receipts-field { display: flex; flex-direction: column; gap: 8px; }
+.field-label {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--muted);
+}
+.upload-btn { align-self: flex-start; }
+.receipt-previews { display: flex; flex-wrap: wrap; gap: 10px; }
+.no-receipts { font-size: 12px; color: var(--muted); }
+.preview { position: relative; }
+.preview img {
+  width: 78px;
+  height: 78px;
+  object-fit: cover;
+  border-radius: 8px;
+  border: 1px solid var(--line);
+  cursor: zoom-in;
+}
+.remove-receipt {
+  position: absolute;
+  top: -7px;
+  right: -7px;
+  width: 20px;
+  height: 20px;
+  border-radius: 50%;
+  border: none;
+  background: var(--danger);
+  color: #fff;
+  font-size: 14px;
+  line-height: 1;
+  cursor: pointer;
+}
+.row-extras { margin-top: 6px; }
+.row-notes {
+  font-size: 12px;
+  color: var(--muted);
+  white-space: pre-wrap;
+  margin-bottom: 6px;
+}
+.thumbs { display: flex; flex-wrap: wrap; gap: 6px; }
+.thumb {
+  width: 46px;
+  height: 46px;
+  object-fit: cover;
+  border-radius: 6px;
+  border: 1px solid var(--line);
+  cursor: zoom-in;
+}
+#lightbox { cursor: zoom-out; }
+#lightbox img {
+  max-width: 92vw;
+  max-height: 92vh;
+  border-radius: 8px;
+  box-shadow: 0 20px 60px rgba(0,0,0,0.5);
+}
 .modal-actions {
   display: flex;
   justify-content: flex-end;
