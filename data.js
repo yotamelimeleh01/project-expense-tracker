@@ -153,3 +153,43 @@ const HEALTH = {
   watch: { key: "watch", label: "Watch" },
   over:  { key: "over",  label: "Over Budget" },
 };
+
+// ---------------------------------------------------------------------------
+// The schedule
+// ---------------------------------------------------------------------------
+// Only three states are ever stored. Blocked and late are worked out from the
+// dependencies and the calendar, because a stored flag would go stale the
+// moment anything moved.
+const TASK_STATUSES = [
+  { value: "not_started", label: "Not Started" },
+  { value: "in_progress", label: "In Progress" },
+  { value: "done",        label: "Done" },
+];
+
+const SCHEDULE_STATE = {
+  done:     { key: "done",     label: "Done" },
+  running:  { key: "running",  label: "In Progress" },
+  blocked:  { key: "blocked",  label: "Blocked" },
+  late:     { key: "late",     label: "Late" },
+  ready:    { key: "ready",    label: "Ready" },
+  waiting:  { key: "waiting",  label: "Waiting" },
+};
+
+// The order trades actually happen in on a rehab. Offered as a starting point
+// so nobody has to type twelve rows to find out their finish date; every
+// duration is a guess and meant to be edited.
+const STARTER_SCHEDULE = [
+  { name: "Permits & approvals",   category: "Permits & Inspections",              days: 10, after: [] },
+  { name: "Demolition",            category: "Demolition & Debris",                days: 5,  after: [0] },
+  { name: "Framing & structural",  category: "Framing & Structural",               days: 7,  after: [1] },
+  { name: "Roof & exterior",       category: "Roofing & Exterior",                 days: 5,  after: [2] },
+  { name: "Windows & doors",       category: "Windows & Doors",                    days: 3,  after: [2] },
+  { name: "Rough-in MEP",          category: "MEP \u2014 Mechanical, Electrical, Plumbing", days: 8, after: [2] },
+  { name: "Insulation & drywall",  category: "Insulation & Drywall",               days: 7,  after: [4, 5] },
+  { name: "Kitchen & bath",        category: "Kitchen & Bath",                     days: 10, after: [6] },
+  { name: "Interior finishes",     category: "Interior Finishes",                  days: 8,  after: [6] },
+  { name: "Flooring",              category: "Flooring",                           days: 5,  after: [8] },
+  { name: "Landscaping",           category: "Landscaping & Curb Appeal",          days: 4,  after: [3] },
+  { name: "Final inspection",      category: "Permits & Inspections",              days: 2,  after: [7, 9, 10] },
+];
+

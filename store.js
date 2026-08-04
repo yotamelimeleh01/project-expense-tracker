@@ -157,6 +157,32 @@ const Store = {
     if (error) throw error;
   },
 
+  // ---------- Schedule ----------
+  // Tasks for every project you can see. The schedule panel needs only the
+  // open project's, but the dashboard flags projects running late, which
+  // means it needs them all.
+  async getTasks(projectId) {
+    const rows = await this.select("tasks", "*", (q) => {
+      const ordered = q.order("sort", { ascending: true });
+      return projectId ? ordered.eq("project_id", projectId) : ordered;
+    });
+    return rows.map(taskFromRow);
+  },
+
+  async saveTask(record, id) {
+    await this.requireSession();
+    const row = taskToRow(record, id || newId());
+    const { data, error } = await this.client.from("tasks").upsert(row).select().single();
+    if (error) throw error;
+    return taskFromRow(data);
+  },
+
+  async deleteTask(id) {
+    await this.requireSession();
+    const { error } = await this.client.from("tasks").delete().eq("id", id);
+    if (error) throw error;
+  },
+
   // ---------- Share links (read-only access without an account) ----------
   async getShareLinks(projectId) {
     const rows = await this.select("share_links", "*", (q) =>
@@ -174,6 +200,7 @@ const Store = {
       ledger: !!opts.showLedger,
       splits: !!opts.showSplits,
       budget: !!opts.showBudget,
+      schedule: !!opts.showSchedule,
       days: Number(opts.days) || 0,
     });
     if (error) throw error;
@@ -458,8 +485,45 @@ function shareLinkFromRow(r) {
     showLedger: !!r.show_ledger,
     showSplits: !!r.show_splits,
     showBudget: !!r.show_budget,
+    showSchedule: !!r.show_schedule,
     expiresAt: r.expires_at || null,
     createdAt: r.created_at || "",
+  };
+}
+
+function taskToRow(t, id) {
+  return {
+    id,
+    project_id: t.projectId,
+    name: t.name,
+    category: t.category || null,
+    contractor_id: t.contractorId || null,
+    duration_days: Math.max(1, Number(t.durationDays) || 1),
+    planned_start: t.plannedStart || null,
+    actual_start: t.actualStart || null,
+    actual_end: t.actualEnd || null,
+    status: t.status || "not_started",
+    depends_on: Array.isArray(t.dependsOn) ? t.dependsOn : [],
+    sort: Number(t.sort) || 0,
+    notes: t.notes || null,
+  };
+}
+
+function taskFromRow(r) {
+  return {
+    id: r.id,
+    projectId: r.project_id,
+    name: r.name || "Untitled task",
+    category: r.category || "",
+    contractorId: r.contractor_id || null,
+    durationDays: Math.max(1, Number(r.duration_days) || 1),
+    plannedStart: r.planned_start || "",
+    actualStart: r.actual_start || "",
+    actualEnd: r.actual_end || "",
+    status: r.status || "not_started",
+    dependsOn: Array.isArray(r.depends_on) ? r.depends_on : [],
+    sort: Number(r.sort) || 0,
+    notes: r.notes || "",
   };
 }
 

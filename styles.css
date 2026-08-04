@@ -1071,3 +1071,144 @@ tbody td { padding: 10px 12px; font-size: 14px; border-bottom: 1px solid var(--l
   body.printing-draw .dq-table tr { page-break-inside: avoid; }
   body.printing-draw .dq-sign { page-break-inside: avoid; }
 }
+
+/* ---------- Schedule ---------- */
+.schedule-panel {
+  background: #fff;
+  border: 1px solid var(--line);
+  border-radius: 14px;
+  padding: 18px 20px;
+  margin-bottom: 18px;
+}
+.sched-empty {
+  padding: 22px 4px 6px;
+  text-align: center;
+  color: var(--muted);
+}
+.sched-empty p {
+  margin: 0 0 14px;
+  max-width: 46ch;
+  margin-inline: auto;
+}
+
+.gantt {
+  position: relative;
+  margin-top: 6px;
+  border-top: 1px solid var(--line);
+}
+.gantt-row {
+  display: grid;
+  grid-template-columns: 190px 1fr 108px;
+  align-items: center;
+  gap: 10px;
+  padding: 7px 0;
+  border-bottom: 1px solid var(--line);
+  cursor: pointer;
+  background: none;
+  text-align: left;
+}
+.gantt-row:hover { background: #f8fafc; }
+.gantt-row:focus-visible { outline: 2px solid var(--blue); outline-offset: -2px; }
+
+.g-label { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+.g-name {
+  font-weight: 600;
+  font-size: 0.9rem;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.g-sub {
+  font-size: 0.72rem;
+  color: var(--muted);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.g-track { position: relative; height: 22px; }
+.g-bar {
+  position: absolute;
+  top: 2px;
+  height: 18px;
+  border-radius: 5px;
+  background: var(--navy-2);
+  display: flex;
+  align-items: center;
+  padding: 0 7px;
+  min-width: 8px;
+}
+.g-dates {
+  font-size: 0.66rem;
+  color: #fff;
+  white-space: nowrap;
+  opacity: 0.9;
+}
+.bar-done    { background: var(--green); }
+.bar-running { background: var(--blue); }
+.bar-late    { background: var(--danger); }
+.bar-blocked { background: #94a3b8; }
+.bar-ready   { background: var(--navy-2); }
+.bar-waiting { background: #cbd5e1; }
+.bar-waiting .g-dates,
+.bar-blocked .g-dates { color: #1f2937; }
+
+/* A phase with no slack: slip it and the whole project slips. */
+.gantt-row.is-critical .g-bar {
+  box-shadow: 0 0 0 2px #fff, 0 0 0 3px var(--danger);
+}
+
+/* Where today falls on the timeline. Pinned over the bar track so the line
+   agrees with the bars rather than the labels beside them. */
+.g-now {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  left: 200px;
+  right: 118px;
+  pointer-events: none;
+}
+.g-today {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  width: 2px;
+  background: rgba(47, 111, 237, 0.45);
+}
+
+.g-state { display: flex; align-items: center; gap: 6px; justify-content: flex-end; }
+.g-slip { font-size: 0.7rem; color: var(--danger); font-weight: 700; }
+
+.sched {
+  font-size: 0.68rem;
+  font-weight: 700;
+  padding: 2px 7px;
+  border-radius: 999px;
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+  white-space: nowrap;
+}
+.sched-done    { background: #dcfce7; color: #166534; }
+.sched-running { background: #dbeafe; color: #1e40af; }
+.sched-late    { background: #fee2e2; color: #991b1b; }
+.sched-blocked { background: #e2e8f0; color: #475569; }
+.sched-ready   { background: #fef9c3; color: #854d0e; }
+.sched-waiting { background: #f1f5f9; color: var(--muted); }
+
+/* What a phase waits for, in the task modal. */
+.dep-list {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  max-height: 160px;
+  overflow-y: auto;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  padding: 8px 10px;
+}
+
+@media (max-width: 700px) {
+  .gantt-row { grid-template-columns: 120px 1fr 80px; }
+  .g-now { left: 130px; right: 90px; }
+  .g-dates { display: none; }
+}

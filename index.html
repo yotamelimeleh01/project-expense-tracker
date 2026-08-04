@@ -127,6 +127,20 @@
         <p class="breakdown-note" id="budget-note"></p>
       </section>
 
+      <!-- Schedule -->
+      <section class="schedule-panel" aria-label="Schedule">
+        <div class="breakdown-head">
+          <h2>Schedule</h2>
+          <div class="budget-head-right">
+            <span class="budget-health" id="schedule-health"></span>
+            <button id="add-task-btn" class="btn">+ Add Phase</button>
+          </div>
+        </div>
+        <div id="schedule-summary" class="budget-summary"></div>
+        <div id="gantt"></div>
+        <p class="breakdown-note" id="schedule-note"></p>
+      </section>
+
       <!-- Cost breakdown by bucket -->
       <section class="breakdown" aria-label="Cost breakdown">
         <div class="breakdown-head">
@@ -413,6 +427,7 @@
           </label>
           <div class="link-switches">
             <label class="checkbox-field"><input type="checkbox" id="sl-budget" checked /> Budget vs actual</label>
+            <label class="checkbox-field"><input type="checkbox" id="sl-schedule" /> Schedule and finish date</label>
             <label class="checkbox-field"><input type="checkbox" id="sl-ledger" /> Every line item</label>
             <label class="checkbox-field"><input type="checkbox" id="sl-splits" /> Partner names and split</label>
           </div>
@@ -576,6 +591,72 @@
           <button type="button" id="c-delete" class="btn btn-danger">Delete</button>
           <div class="spacer"></div>
           <button type="button" id="c-cancel" class="btn">Cancel</button>
+          <button type="submit" class="btn btn-primary">Save</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <!-- Add / edit a phase of work -->
+  <div id="task-modal" class="modal-overlay hidden">
+    <div class="modal">
+      <h2 id="task-title">Add Phase</h2>
+      <form id="task-form" autocomplete="off">
+        <input type="hidden" id="t-id" />
+        <label class="field">
+          <span>Phase</span>
+          <input type="text" id="t-name" placeholder="Rough-in MEP" required />
+        </label>
+        <div class="form-grid">
+          <label class="field">
+            <span>Category</span>
+            <select id="t-category"></select>
+          </label>
+          <label class="field">
+            <span>Contractor</span>
+            <select id="t-contractor"></select>
+          </label>
+        </div>
+        <div class="form-grid">
+          <label class="field">
+            <span>How Many Days</span>
+            <input type="number" id="t-days" min="1" step="1" value="5" required />
+          </label>
+          <label class="field">
+            <span>Not Before <small>(optional)</small></span>
+            <input type="date" id="t-planned" />
+          </label>
+        </div>
+        <label class="field">
+          <span>Waits For</span>
+          <div id="t-deps" class="dep-list"></div>
+        </label>
+        <div class="form-grid">
+          <label class="field">
+            <span>Status</span>
+            <select id="t-status"></select>
+          </label>
+          <label class="field">
+            <span>Really Started</span>
+            <input type="date" id="t-actual-start" />
+          </label>
+          <label class="field">
+            <span>Really Finished</span>
+            <input type="date" id="t-actual-end" />
+          </label>
+        </div>
+        <label class="field">
+          <span>Notes</span>
+          <input type="text" id="t-notes" placeholder="Optional" />
+        </label>
+        <p class="form-hint">
+          Days are calendar days, weekends included. Leave "not before" empty and the
+          phase simply follows whatever it waits for.
+        </p>
+        <div class="modal-actions">
+          <button type="button" id="t-delete" class="btn btn-danger">Delete</button>
+          <div class="spacer"></div>
+          <button type="button" id="t-cancel" class="btn">Cancel</button>
           <button type="submit" class="btn btn-primary">Save</button>
         </div>
       </form>

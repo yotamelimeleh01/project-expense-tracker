@@ -6,6 +6,7 @@ let partners = [];       // partner rows for every project you can see
 let memberships = [];    // your access + everyone else's, per project
 let contractors = [];    // your directory of people you pay
 let budgets = [];        // budget lines for every project you can see
+let tasks = [];          // schedule phases for every project you can see
 let summaries = [];      // lightweight expense rows for every project
 let allDraws = [];       // draw rows for every project
 
@@ -309,6 +310,154 @@ function daysBetween(from, to) {
   return Math.max(0, (b - a) / 86400000);
 }
 
+// ---------- The schedule ----------
+// ISO dates sort and compare correctly as plain strings, which keeps every
+// date calculation here free of time zones.
+function todayIso() {
+  return new Date().toISOString().slice(0, 10);
+}
+function addDays(dateStr, n) {
+  const t = Date.parse(dateStr + "T00:00:00Z");
+  if (isNaN(t)) return dateStr;
+  return new Date(t + n * 86400000).toISOString().slice(0, 10);
+}
+function laterOf(a, b) {
+  return !a ? b : !b ? a : a > b ? a : b;
+}
+function earlierOf(a, b) {
+  return !a ? b : !b ? a : a < b ? a : b;
+}
+
+// Two passes over the dependency graph.
+//
+// Forward: the earliest each phase can start, given everything it waits for.
+// Backward: the latest it could start without moving the finish date.
+//
+// A phase with no room between the two is on the critical path — slip it by a
+// day and the whole project finishes a day later. Everything else has slack.
+function scheduleOf(project, taskList, now) {
+  if (!taskList.length) return null;
+  const day = now || todayIso();
+
+  const byId = new Map(taskList.map((t) => [t.id, t]));
+  const deps = new Map(
+    taskList.map((t) => [t.id, (t.dependsOn || []).filter((d) => byId.has(d) && d !== t.id)])
+  );
+
+  // A circular dependency is a data problem, not a reason to hang. Every task
+  // caught in the loop is named, and then scheduled as if it were free.
+  const order = [];
+  const mark = new Map();
+  const looped = new Set();
+  const stack = [];
+  const visit = (id) => {
+    const state = mark.get(id);
+    if (state === 1) return;
+    if (state === 0) {
+      for (const back of stack.slice(stack.indexOf(id))) looped.add(back);
+      return;
+    }
+    mark.set(id, 0);
+    stack.push(id);
+    for (const d of deps.get(id)) visit(d);
+    stack.pop();
+    mark.set(id, 1);
+    order.push(id);
+  };
+  for (const t of taskList) visit(t.id);
+  for (const id of looped) deps.set(id, []);
+
+  const base =
+    project.settlementDate ||
+    taskList.map((t) => t.plannedStart).filter(Boolean).sort()[0] ||
+    day;
+
+  // Forward pass. What actually happened always beats what was planned.
+  // A dependency that has not been placed yet only happens on the broken edge
+  // of a loop, and is ignored rather than allowed to throw.
+  const span = new Map();
+  for (const id of order) {
+    const t = byId.get(id);
+    let start = t.plannedStart || base;
+    for (const d of deps.get(id)) {
+      const before = span.get(d);
+      if (before) start = laterOf(start, addDays(before.end, 1));
+    }
+    if (t.actualStart) start = t.actualStart;
+    const end = t.actualEnd || addDays(start, Math.max(1, t.durationDays) - 1);
+    span.set(id, { start, end });
+  }
+
+  const finish = order.reduce((f, id) => laterOf(f, span.get(id).end), "");
+
+  // Backward pass, in reverse topological order so every successor is known.
+  const succ = new Map(taskList.map((t) => [t.id, []]));
+  for (const [id, list] of deps) for (const d of list) succ.get(d).push(id);
+
+  const lateEnd = new Map();
+  const lateStart = new Map();
+  for (const id of [...order].reverse()) {
+    let le = finish;
+    for (const s of succ.get(id)) {
+      const after = lateStart.get(s);
+      if (after) le = earlierOf(le, addDays(after, -1));
+    }
+    lateEnd.set(id, le);
+    lateStart.set(id, addDays(le, -(Math.max(1, byId.get(id).durationDays) - 1)));
+  }
+
+  const rows = taskList.map((t) => {
+    const { start, end } = span.get(t.id);
+    const slack = daysBetween(end, lateEnd.get(t.id));
+    const blockers = deps.get(t.id).filter((d) => byId.get(d).status !== "done");
+    let state;
+    if (t.status === "done") state = SCHEDULE_STATE.done;
+    else if (t.status === "in_progress") state = end < day ? SCHEDULE_STATE.late : SCHEDULE_STATE.running;
+    else if (blockers.length) state = SCHEDULE_STATE.blocked;
+    else if (start < day) state = SCHEDULE_STATE.late;
+    else if (start <= day) state = SCHEDULE_STATE.ready;
+    else state = SCHEDULE_STATE.waiting;
+
+    return {
+      ...t,
+      start,
+      end,
+      slack,
+      critical: slack === 0,
+      blockers: blockers.map((d) => byId.get(d).name),
+      looped: looped.has(t.id),
+      state,
+      daysLate: t.status === "done" ? 0 : Math.max(0, daysBetween(end, day)),
+    };
+  });
+
+  const first = rows.reduce((f, r) => earlierOf(f, r.start), "");
+  const late = rows.filter((r) => r.state.key === "late");
+  return {
+    rows,
+    start: first,
+    finish,
+    days: daysBetween(first, finish) + 1,
+    late,
+    slip: late.reduce((m, r) => Math.max(m, r.daysLate), 0),
+    blocked: rows.filter((r) => r.state.key === "blocked"),
+    remaining: rows.filter((r) => r.status !== "done").length,
+    criticalCount: rows.filter((r) => r.critical).length,
+    cycles: [...looped].map((id) => byId.get(id).name),
+    today: day,
+  };
+}
+
+// What a day of delay costs, taken from what holding this project has actually
+// been costing rather than from a number somebody guessed. Interest, taxes,
+// insurance and utilities are all already in the ledger under Cost To Hold.
+function carryPerDay(project, expenseList, day) {
+  if (!project.settlementDate) return 0;
+  const held = sum(expenseList.filter((e) => categoryGroup(e.category) === "hold"));
+  const elapsed = daysBetween(project.settlementDate, day || todayIso());
+  return elapsed > 0 && held > 0 ? held / elapsed : 0;
+}
+
 // ---------- Routing ----------
 function currentRoute() {
   const m = String(location.hash || "").match(/^#\/p\/(.+)$/);
@@ -403,6 +552,16 @@ function renderDashboard() {
           : '<div class="pc-row"><span>Budget used</span><strong>' +
             money(h.actual) + " of " + money(h.budget) + "</strong></div>";
 
+      // Only worth saying something about the schedule while there is still
+      // work left to slip.
+      const s = scheduleOf(p, tasksOf(p.id), todayIso());
+      const scheduleRow =
+        s && s.remaining
+          ? '<div class="pc-row"><span>Finishes</span><strong class="' +
+            (s.late.length ? "neg" : "") + '">' + escapeHtml(s.finish) +
+            (s.late.length ? " \u00b7 " + s.slip + "d late" : "") + "</strong></div>"
+          : "";
+
       return (
         '<button class="project-card" data-open="' + escapeHtml(p.id) + '">' +
         '<div class="pc-head">' +
@@ -415,6 +574,7 @@ function renderDashboard() {
         '<div class="pc-row"><span>Partner cash</span><strong>' + money(n.partnerCash) + "</strong></div>" +
         '<div class="pc-row"><span>Lender payoff</span><strong>' + money(n.payoff) + "</strong></div>" +
         budgetRow +
+        scheduleRow +
         profitRow +
         "</div>" +
         '<div class="pc-health health-' + h.key + '">' + escapeHtml(h.label) +
@@ -509,6 +669,7 @@ function renderProject() {
   renderPartnerCards(p);
   renderSplit(p);
   renderBudget(p);
+  renderSchedule(p);
   renderBreakdown(p);
   renderLoan(p);
   renderGroups();
@@ -811,6 +972,294 @@ function renderBudget(p) {
     );
   }
   document.getElementById("budget-note").textContent = parts.join(" ");
+}
+
+// ---------- The schedule ----------
+function tasksOf(projectId) {
+  return tasks.filter((t) => t.projectId === projectId);
+}
+
+function scheduleStateClass(key) {
+  return "sched sched-" + key;
+}
+
+function renderSchedule(p) {
+  const list = tasksOf(p.id);
+  const s = scheduleOf(p, list, todayIso());
+  const gantt = document.getElementById("gantt");
+  const health = document.getElementById("schedule-health");
+  const note = document.getElementById("schedule-note");
+
+  if (!s) {
+    health.className = "budget-health health-none";
+    health.textContent = "No Schedule";
+    document.getElementById("schedule-summary").innerHTML = "";
+    gantt.innerHTML =
+      '<div class="sched-empty">' +
+      "<p>No phases yet. A schedule is what turns \u201cwe are running late\u201d into a date and a number.</p>" +
+      (canEdit(p.id)
+        ? '<button id="seed-schedule" class="btn btn-primary">Start From A Typical Rehab</button>'
+        : "") +
+      "</div>";
+    note.textContent = "";
+    const seed = document.getElementById("seed-schedule");
+    if (seed) seed.addEventListener("click", seedSchedule);
+    return;
+  }
+
+  const behind = s.late.length;
+  const key = behind ? "over" : s.blocked.length ? "watch" : "under";
+  health.className = "budget-health health-" + key;
+  health.textContent = behind
+    ? behind + " Phase" + (behind === 1 ? "" : "s") + " Late"
+    : s.remaining === 0
+    ? "Finished"
+    : "On Track";
+
+  const carry = carryPerDay(p, expenses, s.today);
+  document.getElementById("schedule-summary").innerHTML =
+    '<div class="bsum"><span>Finishes</span><strong>' + escapeHtml(s.finish) + "</strong></div>" +
+    '<div class="bsum"><span>Days end to end</span><strong>' + s.days + "</strong></div>" +
+    '<div class="bsum"><span>Phases left</span><strong>' + s.remaining + "</strong></div>" +
+    '<div class="bsum"><span>Worst slip</span><strong class="' + (s.slip ? "neg" : "") + '">' +
+    (s.slip ? s.slip + " day" + (s.slip === 1 ? "" : "s") : "none") + "</strong></div>" +
+    (carry && s.slip
+      ? '<div class="bsum"><span>That slip costs</span><strong class="neg">' +
+        money(carry * s.slip) + "</strong></div>"
+      : "");
+
+  // The bars share one timeline, so a phase twice as long looks twice as long.
+  const span = Math.max(1, daysBetween(s.start, s.finish) + 1);
+  const todayPct = ((daysBetween(s.start, s.today) / span) * 100).toFixed(2);
+  const inWindow = s.today >= s.start && s.today <= s.finish;
+
+  const rows = s.rows
+    .slice()
+    .sort((a, b) => (a.start < b.start ? -1 : a.start > b.start ? 1 : a.sort - b.sort))
+    .map((r) => {
+      const left = ((daysBetween(s.start, r.start) / span) * 100).toFixed(2);
+      const width = Math.max(1.5, ((daysBetween(r.start, r.end) + 1) / span) * 100).toFixed(2);
+      const who = contractorName(r.contractorId);
+      const sub = [r.category, who].filter(Boolean).join(" \u00b7 ");
+      return (
+        '<div class="gantt-row' + (r.critical ? " is-critical" : "") + '" data-task="' +
+        escapeHtml(r.id) + '" role="button" tabindex="0">' +
+        '<div class="g-label"><span class="g-name">' + escapeHtml(r.name) + "</span>" +
+        (sub ? '<span class="g-sub">' + escapeHtml(sub) + "</span>" : "") + "</div>" +
+        '<div class="g-track">' +
+        '<div class="g-bar bar-' + r.state.key + '" style="left:' + left + "%;width:" + width + '%">' +
+        '<span class="g-dates">' + escapeHtml(r.start) + " \u2192 " + escapeHtml(r.end) + "</span>" +
+        "</div></div>" +
+        '<div class="g-state"><span class="' + scheduleStateClass(r.state.key) + '">' +
+        escapeHtml(r.state.label) + "</span>" +
+        (r.state.key === "late" ? '<span class="g-slip">' + r.daysLate + "d</span>" : "") +
+        "</div></div>"
+      );
+    })
+    .join("");
+
+  gantt.innerHTML =
+    '<div class="gantt">' +
+    (inWindow ? '<div class="g-now"><div class="g-today" style="left:' + todayPct + '%"></div></div>' : "") +
+    rows +
+    "</div>";
+
+  const parts = [];
+  if (s.cycles.length) {
+    parts.push(
+      "These phases wait on each other in a circle, so their dates are guesses until you fix it: " +
+      s.cycles.join(", ") + "."
+    );
+  }
+  if (s.blocked.length) {
+    parts.push(
+      "Waiting on something else: " +
+      s.blocked.map((r) => r.name + " (needs " + r.blockers.join(", ") + ")").join("; ") + "."
+    );
+  }
+  if (s.criticalCount) {
+    parts.push(
+      s.criticalCount + " phase" + (s.criticalCount === 1 ? " is" : "s are") +
+      " on the critical path \u2014 outlined below. A day lost on any of them is a day lost on the whole project."
+    );
+  }
+  if (carry) {
+    parts.push(
+      "Holding this project has cost " + money(carry) + " a day so far, so every extra day on the " +
+      "critical path costs about that much again."
+    );
+  }
+  parts.push("Days are calendar days, weekends included.");
+  note.textContent = parts.join(" ");
+
+  document.querySelectorAll("#gantt [data-task]").forEach((el) => {
+    const open = () => openTaskModal(el.dataset.task);
+    el.addEventListener("click", open);
+    el.addEventListener("keydown", (ev) => {
+      if (ev.key === "Enter" || ev.key === " ") {
+        ev.preventDefault();
+        open();
+      }
+    });
+  });
+}
+
+// Twelve rows nobody wants to type. Durations are deliberately round numbers
+// meant to be argued with.
+async function seedSchedule() {
+  const p = activeProject();
+  if (!p || !canEdit(p.id)) return;
+  const start = p.settlementDate || todayIso();
+  try {
+    const ids = [];
+    for (let i = 0; i < STARTER_SCHEDULE.length; i++) {
+      const t = STARTER_SCHEDULE[i];
+      const saved = await Store.saveTask({
+        projectId: p.id,
+        name: t.name,
+        category: t.category,
+        durationDays: t.days,
+        plannedStart: i === 0 ? start : "",
+        dependsOn: t.after.map((n) => ids[n]).filter(Boolean),
+        status: "not_started",
+        sort: i * 10,
+      });
+      ids.push(saved.id);
+      tasks.push(saved);
+    }
+    renderSchedule(p);
+    renderDashboard();
+  } catch (err) {
+    reportError("create the starter schedule", err);
+  }
+}
+
+function renderDepPicker(taskId, selected) {
+  const p = activeProject();
+  const others = tasksOf(p.id).filter((t) => t.id !== taskId);
+  const box = document.getElementById("t-deps");
+  if (!others.length) {
+    box.innerHTML = '<span class="form-hint">Nothing else to wait for yet.</span>';
+    return;
+  }
+  box.innerHTML = others
+    .slice()
+    .sort((a, b) => a.sort - b.sort)
+    .map(
+      (t) =>
+        '<label class="checkbox-field"><input type="checkbox" data-dep="' + escapeHtml(t.id) + '"' +
+        (selected.includes(t.id) ? " checked" : "") + " /> " + escapeHtml(t.name) + "</label>"
+    )
+    .join("");
+}
+
+function openTaskModal(id) {
+  const p = activeProject();
+  if (!p || !canEdit(p.id)) return;
+  const t = tasks.find((x) => x.id === id) || null;
+
+  document.getElementById("task-title").textContent = t ? "Edit Phase" : "Add Phase";
+  document.getElementById("t-id").value = t ? t.id : "";
+  document.getElementById("t-name").value = t ? t.name : "";
+  fillCategorySelect(document.getElementById("t-category"), t ? t.category : "");
+
+  const who = document.getElementById("t-contractor");
+  who.innerHTML =
+    '<option value="">Not assigned</option>' +
+    contractors
+      .slice()
+      .sort((a, b) => a.name.localeCompare(b.name))
+      .map((c) => '<option value="' + escapeHtml(c.id) + '">' + escapeHtml(c.name) + "</option>")
+      .join("");
+  who.value = t && t.contractorId ? t.contractorId : "";
+
+  document.getElementById("t-days").value = t ? t.durationDays : 5;
+  document.getElementById("t-planned").value = t ? t.plannedStart : "";
+  document.getElementById("t-actual-start").value = t ? t.actualStart : "";
+  document.getElementById("t-actual-end").value = t ? t.actualEnd : "";
+  document.getElementById("t-status").innerHTML = TASK_STATUSES.map(
+    (s) =>
+      '<option value="' + s.value + '"' +
+      ((t ? t.status : "not_started") === s.value ? " selected" : "") + ">" + s.label + "</option>"
+  ).join("");
+  document.getElementById("t-notes").value = t ? t.notes : "";
+  renderDepPicker(t ? t.id : "", t ? t.dependsOn : []);
+
+  document.getElementById("t-delete").classList.toggle("hidden", !t);
+  document.getElementById("task-modal").classList.remove("hidden");
+  document.getElementById("t-name").focus();
+}
+
+function closeTaskModal() {
+  document.getElementById("task-modal").classList.add("hidden");
+}
+
+async function saveTaskFromForm() {
+  const p = activeProject();
+  if (!p) return;
+  const id = document.getElementById("t-id").value;
+  const name = document.getElementById("t-name").value.trim();
+  if (!name) return;
+
+  const existing = tasks.find((t) => t.id === id);
+  const record = {
+    projectId: p.id,
+    name,
+    category: document.getElementById("t-category").value,
+    contractorId: document.getElementById("t-contractor").value || null,
+    durationDays: Math.max(1, Number(document.getElementById("t-days").value) || 1),
+    plannedStart: document.getElementById("t-planned").value,
+    actualStart: document.getElementById("t-actual-start").value,
+    actualEnd: document.getElementById("t-actual-end").value,
+    status: document.getElementById("t-status").value,
+    notes: document.getElementById("t-notes").value.trim(),
+    dependsOn: [...document.querySelectorAll("#t-deps [data-dep]")]
+      .filter((el) => el.checked)
+      .map((el) => el.dataset.dep),
+    sort: existing ? existing.sort : tasksOf(p.id).length * 10,
+  };
+
+  // A phase marked done with no end date would sit on the chart forever, so
+  // fill in today rather than quietly leaving it open.
+  if (record.status === "done" && !record.actualEnd) record.actualEnd = todayIso();
+  if (record.status !== "not_started" && !record.actualStart) record.actualStart = record.plannedStart || todayIso();
+
+  try {
+    const saved = await Store.saveTask(record, id || undefined);
+    if (existing) tasks = tasks.map((t) => (t.id === saved.id ? saved : t));
+    else tasks.push(saved);
+    closeTaskModal();
+    renderSchedule(p);
+    renderDashboard();
+  } catch (err) {
+    reportError("save this phase", err);
+  }
+}
+
+async function deleteTaskFromForm() {
+  const p = activeProject();
+  const id = document.getElementById("t-id").value;
+  const t = tasks.find((x) => x.id === id);
+  if (!p || !t) return;
+  if (!confirm("Delete \u201c" + t.name + "\u201d from the schedule?")) return;
+
+  // Anything waiting on this phase would otherwise keep a reference to a task
+  // that no longer exists.
+  const orphaned = tasksOf(p.id).filter((x) => x.dependsOn.includes(id));
+  try {
+    await Store.deleteTask(id);
+    tasks = tasks.filter((x) => x.id !== id);
+    for (const o of orphaned) {
+      const next = { ...o, dependsOn: o.dependsOn.filter((d) => d !== id) };
+      const saved = await Store.saveTask(next, o.id);
+      tasks = tasks.map((x) => (x.id === saved.id ? saved : x));
+    }
+    closeTaskModal();
+    renderSchedule(p);
+    renderDashboard();
+  } catch (err) {
+    reportError("delete this phase", err);
+  }
 }
 
 // ---------- Loan payoff ----------
@@ -2242,6 +2691,7 @@ async function renderShareLinks() {
     .map((l) => {
       const shows = [
         l.showBudget ? "budget" : null,
+        l.showSchedule ? "schedule" : null,
         l.showLedger ? "line items" : null,
         l.showSplits ? "splits" : null,
       ].filter(Boolean);
@@ -2290,6 +2740,7 @@ async function createShareLink() {
     const token = await Store.createShareLink(activeProjectId, {
       label: document.getElementById("sl-label").value.trim(),
       showBudget: document.getElementById("sl-budget").checked,
+      showSchedule: document.getElementById("sl-schedule").checked,
       showLedger: document.getElementById("sl-ledger").checked,
       showSplits: document.getElementById("sl-splits").checked,
       days: parseInt(document.getElementById("sl-days").value, 10),
@@ -2375,6 +2826,7 @@ function renderShareView(payload) {
   projects = [p];
   partners = (payload.partners || []).map(partnerFromRow);
   budgets = (payload.budget_lines || []).map(budgetFromRow);
+  tasks = (payload.tasks || []).map(taskFromRow);
   expenses = (payload.expenses || []).map(expenseFromRow);
   draws = (payload.draws || []).map(drawFromRow);
   activeProjectId = p.id;
@@ -2424,6 +2876,7 @@ function renderShareView(payload) {
     '<div class="card-value">' + money(loanNumbers(p, draws).remaining) + "</div></div></section>";
 
   if (scope.budget) html += shareBudgetHtml(p);
+  if (scope.schedule) html += shareScheduleHtml(p);
   if (scope.splits) html += shareSplitHtml(p);
   if (scope.ledger) html += shareLedgerHtml(scope);
 
@@ -2435,6 +2888,39 @@ function renderShareView(payload) {
     "</p>";
 
   document.getElementById("share-view").innerHTML = html;
+}
+
+// A stakeholder gets the dates and nothing else: no bars to misread, no
+// contractor names, no notes.
+function shareScheduleHtml(p) {
+  const s = scheduleOf(p, tasksOf(p.id), todayIso());
+  if (!s) return "";
+  const body = s.rows
+    .slice()
+    .sort((a, b) => (a.start < b.start ? -1 : a.start > b.start ? 1 : a.sort - b.sort))
+    .map(
+      (r) =>
+        "<tr><td>" + escapeHtml(r.name) + "</td>" +
+        "<td>" + escapeHtml(r.start) + "</td>" +
+        "<td>" + escapeHtml(r.end) + "</td>" +
+        '<td><span class="' + scheduleStateClass(r.state.key) + '">' +
+        escapeHtml(r.state.label) + "</span></td></tr>"
+    )
+    .join("");
+  return (
+    '<section class="schedule-panel"><div class="breakdown-head"><h2>Schedule</h2></div>' +
+    '<div class="budget-summary">' +
+    '<div class="bsum"><span>Finishes</span><strong>' + escapeHtml(s.finish) + "</strong></div>" +
+    '<div class="bsum"><span>Phases left</span><strong>' + s.remaining + "</strong></div>" +
+    (s.slip
+      ? '<div class="bsum"><span>Worst slip</span><strong class="neg">' + s.slip + " days</strong></div>"
+      : "") +
+    "</div>" +
+    '<table class="split-table"><thead><tr><th>Phase</th><th>Starts</th><th>Finishes</th>' +
+    "<th>Status</th></tr></thead><tbody>" + body + "</tbody></table>" +
+    '<p class="breakdown-note">Dates are projected from what is finished so far. ' +
+    "Days are calendar days.</p></section>"
+  );
 }
 
 function shareBudgetHtml(p) {
@@ -2558,6 +3044,16 @@ document.getElementById("status-filter").addEventListener("change", renderDashbo
 document.getElementById("settings-btn").addEventListener("click", () => openProjectModal(activeProjectId));
 document.getElementById("share-btn").addEventListener("click", openShareModal);
 document.getElementById("sl-create").addEventListener("click", createShareLink);
+document.getElementById("add-task-btn").addEventListener("click", () => openTaskModal(null));
+document.getElementById("t-cancel").addEventListener("click", closeTaskModal);
+document.getElementById("t-delete").addEventListener("click", deleteTaskFromForm);
+document.getElementById("task-form").addEventListener("submit", (e) => {
+  e.preventDefault();
+  saveTaskFromForm();
+});
+document.getElementById("task-modal").addEventListener("click", (e) => {
+  if (e.target.id === "task-modal") closeTaskModal();
+});
 document.getElementById("budget-btn").addEventListener("click", openBudgetModal);
 document.getElementById("bg-cancel").addEventListener("click", closeBudgetModal);
 document.getElementById("draw-request-btn").addEventListener("click", openDrawRequest);
@@ -2694,6 +3190,7 @@ document.addEventListener("keydown", (e) => {
   closeProjectModal();
   closeBudgetModal();
   closeDrawRequest();
+  closeTaskModal();
   closeContractorEdit();
   closeContractorModal();
   document.getElementById("share-modal").classList.add("hidden");
@@ -2751,7 +3248,7 @@ function closeLoginModal() {
 
 function setAppEnabled(enabled) {
   document
-    .querySelectorAll("#project-view .toolbar button, #project-view .toolbar label, #add-draw-btn")
+    .querySelectorAll("#project-view .toolbar button, #project-view .toolbar label, #add-draw-btn, #add-task-btn")
     .forEach((el) => el.classList.toggle("disabled", !enabled));
 }
 
@@ -2781,12 +3278,13 @@ function fillStaticSelects() {
 }
 
 async function loadAll() {
-  [projects, partners, memberships, contractors, budgets, summaries, allDraws] = await Promise.all([
+  [projects, partners, memberships, contractors, budgets, tasks, summaries, allDraws] = await Promise.all([
     Store.getProjects(),
     Store.getPartners(),
     Store.getMemberships(),
     Store.getContractors(),
     Store.getBudgetLines(),
+    Store.getTasks(null),
     Store.getExpenseSummaries(),
     Store.getDraws(null),
   ]);
@@ -2814,6 +3312,7 @@ function onSignedOut() {
   memberships = [];
   contractors = [];
   budgets = [];
+  tasks = [];
   summaries = [];
   allDraws = [];
   expenses = [];

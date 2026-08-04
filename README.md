@@ -150,10 +150,10 @@ partner are both called out rather than quietly absorbed.
 ### Read-only links
 
 **Who Has Access** can also mint a link for someone with no account — a lender,
-an investor, a spouse. Three switches decide how much the link shows: budget vs
-actual, every line item, and partner names with the split. Everything else is
-left out. Receipts, internal notes, the borrower name, contractors and the
-access list are never sent, whatever the switches say.
+an investor, a spouse. Four switches decide how much the link shows: budget vs
+actual, the schedule and finish date, every line item, and partner names with
+the split. Everything else is left out. Receipts, internal notes, the borrower
+name, contractors and the access list are never sent, whatever the switches say.
 
 The token is generated in the database, never in the browser. Opening the link
 calls one function that checks the token and returns exactly what that link is
@@ -161,6 +161,34 @@ allowed to see; there is no path from a link to any other project. Links carry
 an expiry (30 days by default) and revoking one takes effect immediately.
 
 Treat a link like a password: anyone holding it can read what it covers.
+
+### The schedule
+
+A rehab is a chain of trades, and each one waits for the one before it. Add the
+phases, say how long each takes and what it waits for, and the app works out
+the dates. **Start From A Typical Rehab** writes the usual twelve phases —
+permits through final inspection — in the order they normally happen, so there
+is something to edit rather than a blank page.
+
+Nothing about lateness is stored, because a stored flag goes stale the moment
+anything moves. A phase is *blocked* when something it waits for is unfinished,
+and *late* when the date it should have started or finished has passed. Marking
+demolition finished five days over pushes framing, drywall and everything after
+it out by five days automatically.
+
+The phases outlined in red are the **critical path** — the ones with no slack.
+Lose a day on any of them and the project finishes a day later. Lose a week on
+anything else and the finish date does not move at all. That is the difference
+between a problem and an inconvenience.
+
+Delay is priced from the ledger rather than guessed at. Everything already
+recorded under *Cost To Hold* — interest, taxes, insurance, utilities — divided
+by the days since settlement gives what a day of holding this property actually
+costs, and the schedule multiplies that by the current slip.
+
+Days are calendar days, weekends included. A circular dependency is reported by
+name rather than silently accepted, and deleting a phase clears it from
+whatever was waiting on it.
 
 ### Why draws are not added to all-in
 
@@ -194,6 +222,8 @@ Open **SQL Editor → New query** and run these in order:
    contractor directory and the link from expenses to it
 6. [`supabase-phase4-splits-shares.sql`](supabase-phase4-splits-shares.sql) —
    equity percentages, preferred return, and read-only share links
+7. [`supabase-phase5-schedule.sql`](supabase-phase5-schedule.sql) — the schedule
+   table, trade dependencies, and the schedule switch on share links
 
 Every script after the first is additive and safe to re-run. On an existing
 database they move what you already have onto the new shape rather than
