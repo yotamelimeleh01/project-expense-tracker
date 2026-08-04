@@ -324,6 +324,36 @@ Serve the folder (the app needs a real origin for auth to persist):
 npx serve .
 ```
 
+Opening `index.html` straight off the disk will not work: sessions do not
+persist on `file://`, and the service worker refuses to register there.
+
+## Before you push
+
+```bash
+node tools/check.js
+```
+
+It does not test behaviour — that is what the browser is for. It catches the
+class of mistake that stays silent until the one moment it matters: a button
+wired to an element that does not exist, a file the service worker promises to
+cache but which was never committed, a migration sitting in the repo that the
+setup steps forgot to mention, a secret key in `config.js`.
+
+## What is in here
+
+| | |
+|---|---|
+| `index.html` `styles.css` | the whole interface |
+| `data.js` | categories, statuses, the starter schedule — the fixed vocabulary |
+| `store.js` | everything that talks to Supabase, and the offline write queue |
+| `offline.js` | the queue itself, held photos, and the cached copy of your data |
+| `ocr.js` | reading a receipt photo into an amount, a date and a vendor |
+| `app.js` | state, the sums, and every screen |
+| `sw.js` `manifest.webmanifest` `icons/` | what makes it installable and offline |
+| `supabase-*.sql` | the seven migrations, run in order |
+| `tools/check.js` | the pre-flight check |
+| `tools/make-icons.js` | regenerates the app icons, no dependencies |
+
 ## Deploy
 
 Hosted via GitHub Pages from the `main` branch (root). Any push to `main`
