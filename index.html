@@ -47,8 +47,6 @@
       </div>
     </section>
 
-    <div id="reconcile-banner" class="banner hidden"></div>
-
     <!-- Lender payoff -->
     <section class="loan-panel" aria-label="Loan payoff">
       <div class="loan-head">
@@ -88,11 +86,7 @@
         </select>
       </label>
       <button id="export-btn" class="btn">Export CSV</button>
-      <button id="backup-btn" class="btn">Backup JSON</button>
-      <label class="btn" for="restore-input">Restore JSON</label>
-      <input id="restore-input" type="file" accept="application/json" hidden />
       <button id="print-btn" class="btn">Print / PDF</button>
-      <button id="reset-btn" class="btn btn-danger">Reset to PDF</button>
     </section>
 
     <!-- Grouped expense tables -->
@@ -193,7 +187,7 @@
 
   <footer class="footer">
     Project Expense Tracker | <span id="foot-property"></span> ·
-    Data saved locally in this browser. Use <em>Backup JSON</em> to sync between devices.
+    Synced to the cloud — changes appear on every signed-in device.
   </footer>
 
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.45.4/dist/umd/supabase.min.js"></script>

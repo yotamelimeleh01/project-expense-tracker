@@ -60,11 +60,6 @@ const LocalStore = {
     const list = await this.getDraws();
     writeArray(LS_DRAWS, list.filter((d) => d.id !== id));
   },
-
-  async replaceAll(expenses, draws) {
-    writeArray(LS_EXPENSES, expenses.map((e) => ({ ...e, id: e.id || newId() })));
-    if (draws) writeArray(LS_DRAWS, draws.map((d) => ({ ...d, id: d.id || newId() })));
-  },
 };
 
 function readArray(key, fallback) {

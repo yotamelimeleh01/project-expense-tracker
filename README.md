@@ -20,8 +20,6 @@ GitHub Pages and works on any device with a browser.
 - **Add / edit / delete** expenses via a simple form.
 - **Group by** section or partner, each with subtotals.
 - **CSV export** and **print / save-to-PDF** to reproduce the original document.
-- **Backup / Restore JSON** to move data between devices.
-- **Reset to PDF** to restore the original seeded line items.
 
 ## Sections
 

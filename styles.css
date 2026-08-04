@@ -169,18 +169,6 @@ body {
 .loan-draws-head h3 { margin: 0; font-size: 15px; }
 .empty { color: var(--muted); font-size: 13px; background: var(--bg); padding: 14px; border-radius: 8px; }
 
-/* Reconcile banner */
-.banner {
-  background: #fff7ed;
-  border: 1px solid #fed7aa;
-  border-left: 4px solid #f97316;
-  border-radius: 8px;
-  padding: 12px 16px;
-  font-size: 13px;
-  color: #7c2d12;
-  margin-bottom: 18px;
-}
-
 /* Toolbar */
 .toolbar {
   display: flex;
@@ -207,8 +195,6 @@ body {
 .btn:hover { background: #f1f5f9; }
 .btn-primary { background: var(--blue); border-color: var(--blue); color: #fff; }
 .btn-primary:hover { background: #2359c9; }
-.btn-danger { color: var(--danger); border-color: #fecaca; }
-.btn-danger:hover { background: #fef2f2; }
 
 select, input {
   font: inherit;
@@ -395,6 +381,5 @@ tbody td { padding: 10px 12px; font-size: 14px; border-bottom: 1px solid var(--l
 @media print {
   .topbar { background: #0f2038 !important; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
   .toolbar, .actions-cell, th.actions-col, .footer em { display: none !important; }
-  .banner { display: none; }
   body { background: #fff; }
 }

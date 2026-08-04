@@ -68,7 +68,6 @@ function render() {
   document.getElementById("total-all").textContent = money(t.total);
 
   renderAllIn(t);
-  renderReconcileBanner(t);
   renderLoan();
   renderGroups();
 }
@@ -234,21 +233,6 @@ async function removeDraw(id) {
   }
   draws = draws.filter((x) => x.id !== id);
   render();
-}
-
-function renderReconcileBanner(t) {
-  const banner = document.getElementById("reconcile-banner");
-  const diff = PDF_STATED_TOTALS.total - t.total;
-  if (Math.abs(diff) < 0.01) {
-    banner.classList.add("hidden");
-    return;
-  }
-  banner.classList.remove("hidden");
-  const sign = diff > 0 ? "less than" : "more than";
-  banner.innerHTML =
-    `<strong>Reconciliation:</strong> Line items total <strong>${money(t.total)}</strong>, ` +
-    `which is <strong>${money(Math.abs(diff))}</strong> ${sign} the original PDF header ` +
-    `(<strong>${money(PDF_STATED_TOTALS.total)}</strong>). Add any missing receipts to close the gap.`;
 }
 
 function groupKey(e, mode) {
@@ -498,31 +482,6 @@ function exportCsv() {
   download("expenses.csv", "text/csv", lines.join("\r\n"));
 }
 
-function backupJson() {
-  const payload = { version: 2, expenses, draws };
-  download("expense-backup.json", "application/json", JSON.stringify(payload, null, 2));
-}
-
-function restoreJson(file) {
-  const reader = new FileReader();
-  reader.onload = async () => {
-    try {
-      const data = JSON.parse(reader.result);
-      // v2 backups are { expenses, draws }; v1 backups were a bare array.
-      const list = Array.isArray(data) ? data : data.expenses;
-      if (!Array.isArray(list)) throw new Error("Unrecognized backup format");
-      const restoredDraws =
-        !Array.isArray(data) && Array.isArray(data.draws) ? data.draws : draws;
-      await Store.replaceAll(list, restoredDraws);
-      await loadAll();
-      alert(`Restored ${expenses.length} expenses.`);
-    } catch (err) {
-      reportError("restore that file", err);
-    }
-  };
-  reader.readAsText(file);
-}
-
 function download(filename, type, content) {
   const blob = new Blob([content], { type });
   const url = URL.createObjectURL(blob);
@@ -533,28 +492,12 @@ function download(filename, type, content) {
   URL.revokeObjectURL(url);
 }
 
-async function resetToPdf() {
-  if (!confirm("Reset all data back to the original PDF line items? This discards your changes.")) return;
-  try {
-    await Store.replaceAll(SEED_EXPENSES.slice(), SEED_DRAWS.slice());
-    await loadAll();
-  } catch (err) {
-    reportError("reset the data", err);
-  }
-}
-
 // ---------- Wire up ----------
 document.getElementById("add-btn").addEventListener("click", () => openModal(null));
 document.getElementById("cancel-btn").addEventListener("click", closeModal);
 document.getElementById("group-select").addEventListener("change", renderGroups);
 document.getElementById("export-btn").addEventListener("click", exportCsv);
-document.getElementById("backup-btn").addEventListener("click", backupJson);
 document.getElementById("print-btn").addEventListener("click", () => window.print());
-document.getElementById("reset-btn").addEventListener("click", resetToPdf);
-document.getElementById("restore-input").addEventListener("change", (e) => {
-  if (e.target.files[0]) restoreJson(e.target.files[0]);
-  e.target.value = "";
-});
 document.getElementById("modal").addEventListener("click", (e) => {
   if (e.target.id === "modal") closeModal();
 });

@@ -77,6 +77,3 @@ const SEED_EXPENSES = [
   { date: "", description: "Carlos - Hotel Accommodation (4 Nights)", section: SECTIONS[3], paidBy: "A", amount: 200.0 },
   { date: "", description: "Carlos - On-Site Direct Labor (2 Days)", section: SECTIONS[3], paidBy: "Z", amount: 400.0 },
 ];
-
-// The totals the original PDF header displayed (kept for reconciliation).
-const PDF_STATED_TOTALS = { partnerA: 547.29, partnerZ: 31772.62, total: 32319.91 };
