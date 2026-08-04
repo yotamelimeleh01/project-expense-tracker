@@ -16,6 +16,10 @@
         <span><strong>Settlement Date:</strong> <span id="meta-date"></span></span>
         <span><strong>Borrower:</strong> <span id="meta-borrower"></span></span>
       </div>
+      <div class="auth-row">
+        <span id="auth-status" class="auth-status">Starting…</span>
+        <button id="auth-btn" class="btn btn-ghost hidden"></button>
+      </div>
     </div>
   </header>
 
@@ -153,6 +157,28 @@
     </div>
   </div>
 
+  <!-- Sign-in modal -->
+  <div id="login-modal" class="modal-overlay hidden">
+    <div class="modal modal-sm">
+      <h2>Sign In</h2>
+      <p class="modal-hint">Sign in to load and sync your project expenses.</p>
+      <form id="login-form">
+        <div class="form-grid">
+          <label class="full">Email
+            <input type="email" id="l-email" autocomplete="username" required />
+          </label>
+          <label class="full">Password
+            <input type="password" id="l-password" autocomplete="current-password" required />
+          </label>
+        </div>
+        <p id="login-error" class="login-error hidden"></p>
+        <div class="modal-actions">
+          <button type="submit" class="btn btn-primary">Sign In</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
   <!-- Receipt image viewer -->
   <div id="lightbox" class="modal-overlay hidden">
     <img id="lightbox-img" alt="Receipt" />
@@ -163,7 +189,10 @@
     Data saved locally in this browser. Use <em>Backup JSON</em> to sync between devices.
   </footer>
 
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.45.4/dist/umd/supabase.min.js"></script>
+  <script src="config.js"></script>
   <script src="data.js"></script>
+  <script src="store.js"></script>
   <script src="app.js"></script>
 </body>
 </html>

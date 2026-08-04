@@ -1,49 +1,12 @@
 "use strict";
 
-const STORAGE_KEY = "mpet.expenses.v3";
-const DRAWS_KEY = "mpet.draws.v1";
-
 // ---------- State ----------
-let expenses = load();
-let draws = loadDraws();
+let expenses = [];
+let draws = [];
 let pendingReceipts = [];
 
-function uid() {
-  return Date.now().toString(36) + Math.random().toString(36).slice(2, 8);
-}
-
-function load() {
-  const raw = localStorage.getItem(STORAGE_KEY);
-  if (raw) {
-    try {
-      const parsed = JSON.parse(raw);
-      if (Array.isArray(parsed)) return parsed;
-    } catch (e) {
-      console.warn("Corrupt saved data, falling back to seed.", e);
-    }
-  }
-  return seedWithIds();
-}
-
-function seedWithIds() {
-  return SEED_EXPENSES.map((e) => ({ id: uid(), ...e }));
-}
-
-function save() {
-  try {
-    localStorage.setItem(STORAGE_KEY, JSON.stringify(expenses));
-  } catch (err) {
-    alert(
-      "Storage is full — this expense could not be saved with its photos.\n\n" +
-        "Browser storage is limited to about 5 MB. Try removing a few receipt " +
-        "photos from older expenses, or use Backup JSON to archive them."
-    );
-    throw err;
-  }
-}
-
-// Resize + compress an image file into a small JPEG data URL so many receipts
-// can fit inside the browser's ~5 MB localStorage budget.
+// Resize + compress an image file into a small JPEG data URL so receipts stay
+// light to store and quick to load.
 function compressImage(file, maxDim = 1200, quality = 0.65) {
   return new Promise((resolve, reject) => {
     const reader = new FileReader();
@@ -65,21 +28,9 @@ function compressImage(file, maxDim = 1200, quality = 0.65) {
   });
 }
 
-function loadDraws() {
-  const raw = localStorage.getItem(DRAWS_KEY);
-  if (raw) {
-    try {
-      const parsed = JSON.parse(raw);
-      if (Array.isArray(parsed)) return parsed;
-    } catch (e) {
-      console.warn("Corrupt draws data, falling back to seed.", e);
-    }
-  }
-  return SEED_DRAWS.map((d) => ({ id: uid(), ...d }));
-}
-
-function saveDraws() {
-  localStorage.setItem(DRAWS_KEY, JSON.stringify(draws));
+function reportError(action, err) {
+  console.error(action, err);
+  alert("Could not " + action + ".\n\n" + (err && err.message ? err.message : err));
 }
 
 // ---------- Formatting ----------
@@ -209,20 +160,25 @@ function closeDrawModal() {
   document.getElementById("draw-modal").classList.add("hidden");
 }
 
-function saveDrawFromForm() {
+async function saveDrawFromForm() {
   const id = document.getElementById("d-id").value;
   const record = {
     date: document.getElementById("d-date").value,
     amount: parseFloat(document.getElementById("d-amount").value) || 0,
     note: document.getElementById("d-note").value.trim(),
   };
-  if (id) {
-    const idx = draws.findIndex((d) => d.id === id);
-    if (idx > -1) draws[idx] = { ...draws[idx], ...record };
-  } else {
-    draws.push({ id: uid(), ...record });
+  try {
+    const saved = await Store.saveDraw(record, id || null);
+    if (id) {
+      const idx = draws.findIndex((d) => d.id === id);
+      if (idx > -1) draws[idx] = saved;
+    } else {
+      draws.push(saved);
+    }
+  } catch (err) {
+    reportError("save this draw", err);
+    return;
   }
-  saveDraws();
   closeDrawModal();
   render();
 
@@ -235,12 +191,17 @@ function saveDrawFromForm() {
   }
 }
 
-function removeDraw(id) {
+async function removeDraw(id) {
   const d = draws.find((x) => x.id === id);
   if (!d) return;
   if (!confirm("Delete this draw (" + money(d.amount) + ")?")) return;
+  try {
+    await Store.deleteDraw(id);
+  } catch (err) {
+    reportError("delete this draw", err);
+    return;
+  }
   draws = draws.filter((x) => x.id !== id);
-  saveDraws();
   render();
 }
 
@@ -445,8 +406,7 @@ function closeLightbox() {
   document.getElementById("lightbox-img").src = "";
 }
 
-function saveFromForm() {
-  const id = document.getElementById("f-id").value;
+async function saveFromForm() {
   const record = {
     date: document.getElementById("f-date").value,
     amount: parseFloat(document.getElementById("f-amount").value) || 0,
@@ -456,30 +416,35 @@ function saveFromForm() {
     paidBy: document.getElementById("f-paidBy").value,
     section: document.getElementById("f-section").value,
   };
+  const id = document.getElementById("f-id").value;
 
-  const previous = expenses.slice();
-  if (id) {
-    const idx = expenses.findIndex((e) => e.id === id);
-    if (idx > -1) expenses[idx] = { ...expenses[idx], ...record };
-  } else {
-    expenses.push({ id: uid(), ...record });
-  }
   try {
-    save();
+    const saved = await Store.saveExpense(record, id || null);
+    if (id) {
+      const idx = expenses.findIndex((e) => e.id === id);
+      if (idx > -1) expenses[idx] = saved;
+    } else {
+      expenses.push(saved);
+    }
   } catch (err) {
-    expenses = previous; // keep the modal open so nothing is lost
+    reportError("save this expense", err); // modal stays open so nothing is lost
     return;
   }
   closeModal();
   render();
 }
 
-function removeExpense(id) {
+async function removeExpense(id) {
   const e = expenses.find((x) => x.id === id);
   if (!e) return;
   if (!confirm(`Delete "${e.description}" (${money(e.amount)})?`)) return;
+  try {
+    await Store.deleteExpense(id);
+  } catch (err) {
+    reportError("delete this expense", err);
+    return;
+  }
   expenses = expenses.filter((x) => x.id !== id);
-  save();
   render();
 }
 
@@ -509,22 +474,19 @@ function backupJson() {
 
 function restoreJson(file) {
   const reader = new FileReader();
-  reader.onload = () => {
+  reader.onload = async () => {
     try {
       const data = JSON.parse(reader.result);
       // v2 backups are { expenses, draws }; v1 backups were a bare array.
       const list = Array.isArray(data) ? data : data.expenses;
       if (!Array.isArray(list)) throw new Error("Unrecognized backup format");
-      expenses = list.map((e) => ({ id: e.id || uid(), ...e }));
-      if (!Array.isArray(data) && Array.isArray(data.draws)) {
-        draws = data.draws.map((d) => ({ id: d.id || uid(), ...d }));
-        saveDraws();
-      }
-      save();
-      render();
+      const restoredDraws =
+        !Array.isArray(data) && Array.isArray(data.draws) ? data.draws : draws;
+      await Store.replaceAll(list, restoredDraws);
+      await loadAll();
       alert(`Restored ${expenses.length} expenses.`);
     } catch (err) {
-      alert("Could not read that file: " + err.message);
+      reportError("restore that file", err);
     }
   };
   reader.readAsText(file);
@@ -540,11 +502,14 @@ function download(filename, type, content) {
   URL.revokeObjectURL(url);
 }
 
-function resetToPdf() {
+async function resetToPdf() {
   if (!confirm("Reset all data back to the original PDF line items? This discards your changes.")) return;
-  expenses = seedWithIds();
-  save();
-  render();
+  try {
+    await Store.replaceAll(SEED_EXPENSES.slice(), SEED_DRAWS.slice());
+    await loadAll();
+  } catch (err) {
+    reportError("reset the data", err);
+  }
 }
 
 // ---------- Wire up ----------
@@ -582,5 +547,118 @@ document.addEventListener("keydown", (e) => {
     closeDrawModal();
   }
 });
+document.getElementById("auth-btn").addEventListener("click", () => {
+  if (Store.mode !== "cloud") return;
+  if (currentUser) Store.signOut();
+  else openLoginModal();
+});
+document.getElementById("login-form").addEventListener("submit", async (ev) => {
+  ev.preventDefault();
+  const errEl = document.getElementById("login-error");
+  errEl.classList.add("hidden");
+  try {
+    await Store.signIn(
+      document.getElementById("l-email").value.trim(),
+      document.getElementById("l-password").value
+    );
+  } catch (err) {
+    errEl.textContent = err.message || "Sign-in failed.";
+    errEl.classList.remove("hidden");
+  }
+});
 
-render();
+// ---------- Boot ----------
+let currentUser = null;
+
+function openLoginModal() {
+  document.getElementById("login-error").classList.add("hidden");
+  document.getElementById("login-modal").classList.remove("hidden");
+  document.getElementById("l-email").focus();
+}
+
+function closeLoginModal() {
+  document.getElementById("login-modal").classList.add("hidden");
+  document.getElementById("login-form").reset();
+}
+
+function setAppEnabled(enabled) {
+  document
+    .querySelectorAll(".toolbar button, .toolbar label, .toolbar select, #add-draw-btn")
+    .forEach((el) => el.classList.toggle("disabled", !enabled));
+}
+
+function setAuthUi(user) {
+  const status = document.getElementById("auth-status");
+  const btn = document.getElementById("auth-btn");
+  if (Store.mode === "local") {
+    status.textContent = "Offline mode \u2014 saved in this browser only";
+    btn.classList.add("hidden");
+    return;
+  }
+  btn.classList.remove("hidden");
+  if (user) {
+    status.textContent = "Synced \u00b7 " + user.email;
+    btn.textContent = "Sign Out";
+  } else {
+    status.textContent = "Not signed in";
+    btn.textContent = "Sign In";
+  }
+}
+
+async function loadAll() {
+  expenses = await Store.getExpenses();
+  draws = await Store.getDraws();
+  render();
+}
+
+async function onSignedIn(user) {
+  currentUser = user;
+  setAuthUi(user);
+  closeLoginModal();
+  setAppEnabled(true);
+  try {
+    await loadAll();
+    // First run against an empty cloud database: offer to move local data up.
+    if (!expenses.length && !draws.length) {
+      const local = await LocalStore.getExpenses();
+      if (
+        local.length &&
+        confirm(
+          "Your cloud database is empty.\n\nUpload the " + local.length +
+            " expenses currently saved in this browser to the cloud?"
+        )
+      ) {
+        await SupabaseStore.importLocalData();
+        await loadAll();
+      }
+    }
+  } catch (err) {
+    reportError("load your data", err);
+  }
+}
+
+function onSignedOut() {
+  currentUser = null;
+  expenses = [];
+  draws = [];
+  setAuthUi(null);
+  setAppEnabled(false);
+  render();
+  openLoginModal();
+}
+
+async function boot() {
+  await Store.init();
+  if (Store.mode === "local") {
+    setAuthUi(null);
+    setAppEnabled(true);
+    await loadAll();
+    return;
+  }
+  Store.onAuthChange((user) => (user ? onSignedIn(user) : onSignedOut()));
+  const user = await Store.currentUser();
+  if (user) await onSignedIn(user);
+  else onSignedOut();
+}
+
+boot();

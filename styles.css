@@ -41,6 +41,37 @@ body {
 }
 .meta-row strong { color: #fff; }
 
+/* Auth bar */
+.auth-row {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-top: 12px;
+  padding-top: 12px;
+  border-top: 1px solid rgba(255,255,255,0.12);
+}
+.auth-status { font-size: 12px; color: #9fb2cc; }
+.btn-ghost {
+  background: transparent;
+  border-color: rgba(255,255,255,0.3);
+  color: #fff;
+  padding: 5px 12px;
+  font-size: 12px;
+}
+.btn-ghost:hover { background: rgba(255,255,255,0.12); }
+.modal-sm { max-width: 380px; }
+.modal-hint { margin: -6px 0 16px; font-size: 13px; color: var(--muted); }
+.login-error {
+  background: #fef2f2;
+  border: 1px solid #fecaca;
+  color: #991b1b;
+  font-size: 13px;
+  padding: 8px 12px;
+  border-radius: 8px;
+  margin: 12px 0 0;
+}
+.disabled { opacity: 0.45; pointer-events: none; }
+
 .container { max-width: 1100px; margin: 0 auto; padding: 24px; }
 
 /* Summary cards */
