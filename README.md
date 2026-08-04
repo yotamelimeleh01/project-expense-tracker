@@ -125,6 +125,43 @@ generally exempt, so the report flags people rather than filing anything.
 Only the last four digits of a tax ID are stored. Do not type a full SSN or EIN
 into this app — keep the W-9 itself somewhere built to hold it.
 
+### Who takes home what
+
+Give each partner an equity percentage in project settings and a sold project
+shows the waterfall:
+
+1. **Capital back.** Every partner gets their own money out first, less their
+   share of any construction draws already received.
+2. **Preferred return.** If the deal pays one, it accrues on each dollar from
+   the day it was spent to the day of the sale.
+3. **The upside.** Whatever is left is divided by the equity percentages.
+
+Equity decides the upside only, which is why the partner who fronted more cash
+does not automatically take more profit — they take their cash back first, and
+then their agreed share. Leave every percentage at zero and the split falls
+back to each partner's share of the money that went in.
+
+The payouts always add up to the cash on the table at closing, and the upside
+always equals the profit shown at the top of the page. If the sale does not
+cover what went in, everyone takes the same proportional loss rather than
+first-in-best-dressed. Percentages that miss 100% and spend not assigned to any
+partner are both called out rather than quietly absorbed.
+
+### Read-only links
+
+**Who Has Access** can also mint a link for someone with no account — a lender,
+an investor, a spouse. Three switches decide how much the link shows: budget vs
+actual, every line item, and partner names with the split. Everything else is
+left out. Receipts, internal notes, the borrower name, contractors and the
+access list are never sent, whatever the switches say.
+
+The token is generated in the database, never in the browser. Opening the link
+calls one function that checks the token and returns exactly what that link is
+allowed to see; there is no path from a link to any other project. Links carry
+an expiry (30 days by default) and revoking one takes effect immediately.
+
+Treat a link like a password: anyone holding it can read what it covers.
+
 ### Why draws are not added to all-in
 
 A construction draw reimburses an expense that is already a line item, so
@@ -155,6 +192,8 @@ Open **SQL Editor → New query** and run these in order:
    receipts bucket and its access policies
 5. [`supabase-phase3-contractors.sql`](supabase-phase3-contractors.sql) — the
    contractor directory and the link from expenses to it
+6. [`supabase-phase4-splits-shares.sql`](supabase-phase4-splits-shares.sql) —
+   equity percentages, preferred return, and read-only share links
 
 Every script after the first is additive and safe to re-run. On an existing
 database they move what you already have onto the new shape rather than

@@ -952,6 +952,88 @@ tbody td { padding: 10px 12px; font-size: 14px; border-bottom: 1px solid var(--l
 .checkbox-field input { width: auto; }
 .row-contractor { font-size: 11px; color: var(--muted); margin-top: 2px; }
 
+/* ---------- Profit split ---------- */
+.split-panel {
+  background: #fff;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  padding: 18px 20px;
+  margin-bottom: 20px;
+}
+.split-table { width: 100%; border-collapse: collapse; font-size: 13px; }
+.split-table th {
+  text-align: right;
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.7px;
+  color: var(--muted);
+  padding: 6px 10px;
+  border-bottom: 1px solid var(--line);
+}
+.split-table th:first-child, .split-table td:first-child { text-align: left; }
+.split-table td { padding: 9px 10px; text-align: right; border-bottom: 1px solid #f1f5f9; }
+.split-table tfoot td {
+  font-weight: 700;
+  border-top: 2px solid var(--line);
+  border-bottom: 0;
+}
+.split-take { font-weight: 700; color: var(--navy); }
+.equity-input { width: 72px; flex: 0 0 auto; text-align: right; }
+.equity-sign { color: var(--muted); font-size: 12px; }
+
+/* ---------- Read-only links ---------- */
+.link-list { margin-bottom: 12px; }
+.link-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 9px 12px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  margin-bottom: 6px;
+}
+.link-dead { opacity: 0.55; }
+.link-main { flex: 1; min-width: 0; }
+.link-label { display: block; font-weight: 600; font-size: 13px; }
+.link-sub { display: block; font-size: 11px; color: var(--muted); }
+.link-new {
+  border: 1px dashed var(--line);
+  border-radius: 8px;
+  padding: 14px;
+  margin-bottom: 12px;
+}
+.link-switches { grid-column: 1 / -1; display: flex; flex-wrap: wrap; gap: 16px; }
+.sl-result {
+  font-size: 12px;
+  background: #f0fdf4;
+  border: 1px solid #bbf7d0;
+  color: #15803d;
+  border-radius: 8px;
+  padding: 10px 12px;
+  word-break: break-all;
+}
+
+/* ---------- Stakeholder view ---------- */
+.share-banner {
+  background: var(--navy);
+  color: #fff;
+  border-radius: 10px;
+  padding: 12px 18px;
+  font-size: 13px;
+  margin-bottom: 20px;
+}
+.share-meta { color: var(--muted); font-size: 13px; margin: 4px 0 8px; }
+.share-foot { color: var(--muted); font-size: 12px; text-align: center; margin: 28px 0; }
+.share-dead { text-align: center; padding: 60px 20px; color: var(--muted); }
+.share-dead h2 { color: var(--text); margin-bottom: 8px; }
+.ledger-panel {
+  background: #fff;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  padding: 18px 20px;
+  margin-bottom: 20px;
+}
+
 .footer {
   max-width: 1100px;
   margin: 20px auto 40px;

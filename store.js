@@ -140,6 +140,7 @@ const Store = {
       project_id: record.projectId,
       name: record.name,
       sort: Number(record.sort) || 0,
+      equity_pct: Number(record.equityPct) || 0,
     };
     const { data, error } = await this.client
       .from("project_partners")
@@ -154,6 +155,44 @@ const Store = {
     await this.requireSession();
     const { error } = await this.client.from("project_partners").delete().eq("id", id);
     if (error) throw error;
+  },
+
+  // ---------- Share links (read-only access without an account) ----------
+  async getShareLinks(projectId) {
+    const rows = await this.select("share_links", "*", (q) =>
+      q.eq("project_id", projectId).order("created_at", { ascending: true })
+    );
+    return rows.map(shareLinkFromRow);
+  },
+
+  // The token is minted in the database so it is always full-strength random.
+  async createShareLink(projectId, opts) {
+    await this.requireSession();
+    const { data, error } = await this.client.rpc("share_link_create", {
+      pid: projectId,
+      link_label: opts.label || null,
+      ledger: !!opts.showLedger,
+      splits: !!opts.showSplits,
+      budget: !!opts.showBudget,
+      days: Number(opts.days) || 0,
+    });
+    if (error) throw error;
+    return data;
+  },
+
+  async deleteShareLink(token) {
+    await this.requireSession();
+    const { error } = await this.client.from("share_links").delete().eq("token", token);
+    if (error) throw error;
+  },
+
+  // The one call that deliberately does not wait for a session: whoever opens
+  // a share link has no account. The token is the whole credential, and the
+  // database decides what it is worth.
+  async openShare(token) {
+    const { data, error } = await this.client.rpc("share_view", { tok: token });
+    if (error) throw error;
+    return data || null;
   },
 
   // ---------- Members (who can open the project) ----------
@@ -369,6 +408,7 @@ function projectToRow(p, id) {
     loan_amount: Number(p.loanAmount) || 0,
     loan_holdback: Number(p.loanHoldback) || 0,
     variance_threshold: Number(p.varianceThreshold) || 10,
+    pref_annual_pct: Number(p.prefAnnualPct) || 0,
     purchase_price: num(p.purchasePrice),
     sale_price: num(p.salePrice),
     sale_date: p.saleDate || null,
@@ -390,6 +430,7 @@ function projectFromRow(r) {
     varianceThreshold: r.variance_threshold === null || r.variance_threshold === undefined
       ? 10
       : Number(r.variance_threshold),
+    prefAnnualPct: Number(r.pref_annual_pct) || 0,
     purchasePrice: num(r.purchase_price),
     salePrice: num(r.sale_price),
     saleDate: r.sale_date || "",
@@ -405,6 +446,20 @@ function partnerFromRow(r) {
     projectId: r.project_id,
     name: r.name || "Partner",
     sort: Number(r.sort) || 0,
+    equityPct: Number(r.equity_pct) || 0,
+  };
+}
+
+function shareLinkFromRow(r) {
+  return {
+    token: r.token,
+    projectId: r.project_id,
+    label: r.label || "",
+    showLedger: !!r.show_ledger,
+    showSplits: !!r.show_splits,
+    showBudget: !!r.show_budget,
+    expiresAt: r.expires_at || null,
+    createdAt: r.created_at || "",
   };
 }
 

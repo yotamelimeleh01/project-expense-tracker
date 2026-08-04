@@ -103,6 +103,16 @@
       <!-- Who paid what -->
       <section class="cards" id="partner-cards" aria-label="Partner totals"></section>
 
+      <!-- Who takes home what -->
+      <section class="split-panel hidden" id="split-panel" aria-label="Profit split">
+        <div class="breakdown-head">
+          <h2>Who Takes Home What</h2>
+          <span class="muted" id="split-basis"></span>
+        </div>
+        <div id="split-table"></div>
+        <p class="budget-note" id="split-note"></p>
+      </section>
+
       <!-- Budget vs actual -->
       <section class="budget-panel" aria-label="Budget versus actual">
         <div class="breakdown-head">
@@ -176,6 +186,11 @@
       <!-- Grouped expense tables -->
       <div id="groups"></div>
     </section>
+
+    <!-- ================= STAKEHOLDER VIEW =================
+         What someone opening a read-only link sees. Built entirely from the
+         payload the database hands back for their token. -->
+    <section id="share-view" class="hidden"></section>
   </main>
 
   <!-- Add/Edit expense modal -->
@@ -323,6 +338,17 @@
         <h3 class="form-section">Partners <span class="form-sub">whose money is in this deal</span></h3>
         <div id="pr-partners" class="partner-editor"></div>
         <button type="button" id="pr-add-partner" class="btn btn-small">+ Add Partner</button>
+        <div class="form-grid">
+          <label>Preferred Return (% a year)
+            <input type="number" id="pr-pref" step="0.1" min="0" value="0" />
+          </label>
+          <p class="form-hint">
+            Equity percentages decide the upside only. At a sale every partner gets their
+            own money back first, then any preferred return on it, and only what is left
+            over is split by those percentages. Leave them all at zero to split in
+            proportion to what each person put in.
+          </p>
+        </div>
 
         <h3 class="form-section">The Exit</h3>
         <div class="form-grid">
@@ -364,10 +390,44 @@
         </div>
         <p id="share-error" class="login-error hidden"></p>
         <div class="modal-actions">
-          <button type="button" id="share-close" class="btn">Done</button>
           <button type="submit" class="btn btn-primary">Add Person</button>
         </div>
       </form>
+
+      <h3 class="form-section">Read-Only Links
+        <span class="form-sub">for a lender or investor with no account</span>
+      </h3>
+      <div id="link-list" class="link-list"></div>
+      <div class="link-new">
+        <div class="form-grid">
+          <label class="full">Who is it for
+            <input type="text" id="sl-label" placeholder="e.g. Ridgeline Capital" />
+          </label>
+          <label>Stops working after
+            <select id="sl-days">
+              <option value="7">7 days</option>
+              <option value="30" selected>30 days</option>
+              <option value="90">90 days</option>
+              <option value="0">never</option>
+            </select>
+          </label>
+          <div class="link-switches">
+            <label class="checkbox-field"><input type="checkbox" id="sl-budget" checked /> Budget vs actual</label>
+            <label class="checkbox-field"><input type="checkbox" id="sl-ledger" /> Every line item</label>
+            <label class="checkbox-field"><input type="checkbox" id="sl-splits" /> Partner names and split</label>
+          </div>
+        </div>
+        <p class="form-hint">
+          Anyone holding the link can read it, so treat it like a password. Receipts,
+          notes, contractors and your access list are never included.
+        </p>
+        <button type="button" id="sl-create" class="btn">Create Link</button>
+      </div>
+      <p id="sl-result" class="sl-result hidden"></p>
+
+      <div class="modal-actions">
+        <button type="button" id="share-close" class="btn">Done</button>
+      </div>
     </div>
   </div>
 

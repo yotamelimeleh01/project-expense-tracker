@@ -20,6 +20,7 @@ let receiptUrls = {};    // storage path -> signed URL, refreshed per project
 let pendingPartners = [];
 let pendingBudget = {};
 let currentUser = null;
+let shareMode = false;    // true when a read-only link is being viewed
 let booted = false;
 
 // ---------- Formatting ----------
@@ -206,6 +207,108 @@ function statusClass(status) {
   return "status status-" + String(status || "before_closing").replace(/_/g, "-");
 }
 
+// ---------- Profit split ----------
+// The waterfall a small partnership actually runs at closing:
+//
+//   1. everybody gets their own money back
+//   2. anybody owed a preferred return gets it
+//   3. whatever is left is split by the agreed percentages
+//
+// Every figure is derived from the ledger, so the split can never drift away
+// from the expenses it came from. Tier 3 works out to exactly profit minus
+// the preferred return, which is the same profit shown at the top of the page.
+function splitWaterfall(project, partnerList, expenseList, drawList) {
+  if (project.salePrice === null || project.salePrice === undefined) return null;
+  if (!partnerList.length) return null;
+
+  const loan = loanNumbers(project, drawList);
+  const proceeds = (Number(project.salePrice) || 0) - loan.payoff;
+  const contributedTotal = sum(expenseList.filter((e) => e.partnerId));
+  const unassigned = sum(expenseList.filter((e) => !e.partnerId));
+
+  // A draw reimburses the partnership, not one named partner, so it comes off
+  // everybody's capital in proportion to what they put in.
+  const drawShare = contributedTotal > 0 ? loan.totalDraws / contributedTotal : 0;
+
+  // The preferred return accrues on each pound from the day it was spent to
+  // the day the deal closes — or to today, while it is still running.
+  const end = project.saleDate || new Date().toISOString().slice(0, 10);
+  const rate = (Number(project.prefAnnualPct) || 0) / 100;
+
+  const rows = partnerList.map((pt) => {
+    const mine = expenseList.filter((e) => e.partnerId === pt.id);
+    const contributed = sum(mine);
+    const pref = rate
+      ? mine.reduce((s, e) => s + (Number(e.amount) || 0) * rate * (daysBetween(e.date, end) / 365), 0)
+      : 0;
+    return {
+      id: pt.id,
+      name: pt.name,
+      equityPct: Number(pt.equityPct) || 0,
+      contributed,
+      reimbursed: contributed * drawShare,
+      netCapital: contributed * (1 - drawShare),
+      pref,
+    };
+  });
+
+  // If nobody has set a percentage, fall back to splitting the way the money
+  // went in. Better than dividing by zero and better than a silent 50/50.
+  const equityTotal = rows.reduce((s, r) => s + r.equityPct, 0);
+  const usingFallback = equityTotal <= 0;
+  for (const r of rows) {
+    r.share = usingFallback
+      ? contributedTotal > 0 ? r.contributed / contributedTotal : 1 / rows.length
+      : r.equityPct / equityTotal;
+  }
+
+  let left = proceeds;
+
+  // Tier 1 — capital back. If the sale did not even cover this, everyone takes
+  // the same proportional haircut rather than first-in-best-dressed.
+  const capitalNeed = rows.reduce((s, r) => s + r.netCapital, 0);
+  const capitalRatio = capitalNeed > 0 ? Math.min(1, Math.max(0, left / capitalNeed)) : 1;
+  for (const r of rows) r.capitalBack = r.netCapital * capitalRatio;
+  left -= capitalNeed * capitalRatio;
+
+  // Tier 2 — the preferred return, pro-rated the same way if it is short.
+  const prefNeed = rows.reduce((s, r) => s + r.pref, 0);
+  const prefRatio = prefNeed > 0 ? Math.min(1, Math.max(0, left / prefNeed)) : 0;
+  for (const r of rows) r.prefPaid = r.pref * prefRatio;
+  left -= prefNeed * prefRatio;
+
+  // Tier 3 — the upside.
+  const remainder = left;
+  for (const r of rows) {
+    r.profitShare = remainder * r.share;
+    r.total = r.capitalBack + r.prefPaid + r.profitShare;
+    r.gain = r.total - r.netCapital;
+  }
+
+  return {
+    rows,
+    proceeds,
+    payoff: loan.payoff,
+    capitalNeed,
+    prefNeed,
+    prefPaid: prefNeed * prefRatio,
+    remainder,
+    shortfall: capitalRatio < 1 || (prefNeed > 0 && prefRatio < 1),
+    unassigned,
+    equityTotal,
+    usingFallback,
+    end,
+  };
+}
+
+function daysBetween(from, to) {
+  if (!from || !to) return 0;
+  const a = Date.parse(from + "T00:00:00Z");
+  const b = Date.parse(to + "T00:00:00Z");
+  if (isNaN(a) || isNaN(b)) return 0;
+  return Math.max(0, (b - a) / 86400000);
+}
+
 // ---------- Routing ----------
 function currentRoute() {
   const m = String(location.hash || "").match(/^#\/p\/(.+)$/);
@@ -220,6 +323,7 @@ function goProject(id) {
 }
 
 async function route() {
+  if (shareMode) return;
   const r = currentRoute();
   const dash = document.getElementById("dashboard-view");
   const proj = document.getElementById("project-view");
@@ -403,6 +507,7 @@ function renderProject() {
   renderAllIn(p);
   renderProfit(p);
   renderPartnerCards(p);
+  renderSplit(p);
   renderBudget(p);
   renderBreakdown(p);
   renderLoan(p);
@@ -475,6 +580,81 @@ function renderPartnerCards(p) {
     '<div class="card-value">' + money(total) + "</div></div>"
   );
   document.getElementById("partner-cards").innerHTML = cards.join("");
+}
+
+// The waterfall, laid out so anyone can follow the money left to right:
+// what went in, what came back mid-project, what the deal owes, what is left.
+function renderSplit(p) {
+  const panel = document.getElementById("split-panel");
+  const w = splitWaterfall(p, partnersOf(p.id), expenses, draws);
+  if (!w) {
+    panel.classList.add("hidden");
+    return;
+  }
+  panel.classList.remove("hidden");
+
+  document.getElementById("split-basis").textContent = w.usingFallback
+    ? "Split in proportion to what each partner put in"
+    : "Split " + w.rows.map((r) => Math.round(r.equityPct) + "%").join(" / ");
+
+  const head =
+    "<thead><tr><th>Partner</th><th>Put In</th><th>Draws Back</th><th>At Risk</th>" +
+    (w.prefNeed > 0 ? "<th>Preferred</th>" : "") +
+    "<th>Profit Share</th><th>Takes Home</th></tr></thead>";
+
+  const body = w.rows
+    .map(
+      (r) =>
+        "<tr><td>" + escapeHtml(r.name) + "</td>" +
+        "<td>" + money(r.contributed) + "</td>" +
+        "<td>" + money(r.reimbursed) + "</td>" +
+        "<td>" + money(r.netCapital) + "</td>" +
+        (w.prefNeed > 0 ? "<td>" + money(r.prefPaid) + "</td>" : "") +
+        '<td class="' + (r.profitShare >= 0 ? "pos" : "neg") + '">' + money(r.profitShare) + "</td>" +
+        '<td class="split-take">' + money(r.total) + "</td></tr>"
+    )
+    .join("");
+
+  const totals =
+    "<tfoot><tr><td>Total</td>" +
+    "<td>" + money(sum(w.rows, (r) => r.contributed)) + "</td>" +
+    "<td>" + money(sum(w.rows, (r) => r.reimbursed)) + "</td>" +
+    "<td>" + money(w.capitalNeed) + "</td>" +
+    (w.prefNeed > 0 ? "<td>" + money(w.prefPaid) + "</td>" : "") +
+    "<td>" + money(w.remainder) + "</td>" +
+    '<td class="split-take">' + money(w.proceeds) + "</td></tr></tfoot>";
+
+  document.getElementById("split-table").innerHTML =
+    '<table class="split-table">' + head + "<tbody>" + body + "</tbody>" + totals + "</table>";
+
+  const notes = [
+    "Sale price less the " + money(w.payoff) + " lender payoff leaves " +
+      money(w.proceeds) + " on the table. Capital goes back first" +
+      (w.prefNeed > 0 ? ", then the preferred return" : "") +
+      ", and the rest is split.",
+  ];
+  if (w.prefNeed > 0) {
+    notes.push(
+      "The preferred return is " + p.prefAnnualPct + "% a year on each pound from the day " +
+      "it was spent to " + w.end + "."
+    );
+  }
+  if (w.shortfall) {
+    notes.push("The sale does not cover what the partners put in, so everyone takes the same proportional loss.");
+  }
+  if (!w.usingFallback && Math.abs(w.equityTotal - 100) > 0.01) {
+    notes.push(
+      "Warning: the equity percentages add up to " + w.equityTotal + "%, not 100%. " +
+      "The split still uses each partner's share of that total, but the numbers are worth checking."
+    );
+  }
+  if (w.unassigned > 0) {
+    notes.push(
+      "Warning: " + money(w.unassigned) + " of spend is not assigned to a partner, so it is " +
+      "not being returned to anyone. Assign it for this split to be right."
+    );
+  }
+  document.getElementById("split-note").textContent = notes.join(" ");
 }
 
 // ---------- Cost breakdown ----------
@@ -1697,6 +1877,7 @@ function openProjectModal(id) {
     existing && existing.salePrice !== null ? existing.salePrice : "";
   document.getElementById("pr-saledate").value = existing ? existing.saleDate : "";
   document.getElementById("pr-notes").value = existing ? existing.notes : "";
+  document.getElementById("pr-pref").value = existing ? existing.prefAnnualPct : 0;
 
   fillSelect(
     document.getElementById("pr-status"),
@@ -1705,8 +1886,8 @@ function openProjectModal(id) {
   );
 
   pendingPartners = existing
-    ? partnersOf(existing.id).map((p) => ({ id: p.id, name: p.name }))
-    : DEFAULT_PARTNER_NAMES.map((name) => ({ id: null, name }));
+    ? partnersOf(existing.id).map((p) => ({ id: p.id, name: p.name, equityPct: p.equityPct }))
+    : DEFAULT_PARTNER_NAMES.map((name) => ({ id: null, name, equityPct: 0 }));
   renderPartnerEditor();
 
   document.getElementById("pr-delete").classList.toggle("hidden", !existing || !isOwner(existing.id));
@@ -1726,6 +1907,9 @@ function renderPartnerEditor() {
       (p, i) =>
         '<div class="partner-row">' +
         '<input type="text" data-partner-name="' + i + '" value="' + escapeHtml(p.name) + '" placeholder="Partner name" />' +
+        '<input type="number" class="equity-input" data-partner-eq="' + i + '" value="' +
+          (Number(p.equityPct) || 0) + '" step="0.1" min="0" max="100" title="Share of the profit" />' +
+        '<span class="equity-sign">%</span>' +
         '<button type="button" class="icon-btn del" data-partner-del="' + i + '">Remove</button>' +
         "</div>"
     )
@@ -1733,6 +1917,11 @@ function renderPartnerEditor() {
   el.querySelectorAll("[data-partner-name]").forEach((input) =>
     input.addEventListener("input", () => {
       pendingPartners[Number(input.dataset.partnerName)].name = input.value;
+    })
+  );
+  el.querySelectorAll("[data-partner-eq]").forEach((input) =>
+    input.addEventListener("input", () => {
+      pendingPartners[Number(input.dataset.partnerEq)].equityPct = parseFloat(input.value) || 0;
     })
   );
   el.querySelectorAll("[data-partner-del]").forEach((b) =>
@@ -1771,6 +1960,7 @@ async function saveProjectFromForm() {
     purchasePrice: purchaseRaw === "" ? null : parseFloat(purchaseRaw),
     salePrice: saleRaw === "" ? null : parseFloat(saleRaw),
     saleDate: document.getElementById("pr-saledate").value,
+    prefAnnualPct: parseFloat(document.getElementById("pr-pref").value) || 0,
     notes: document.getElementById("pr-notes").value.trim(),
   };
 
@@ -1823,8 +2013,11 @@ async function syncPartners(projectId) {
     const name = p.name.trim();
     if (!name) continue;
     const before = p.id ? existing.find((x) => x.id === p.id) : null;
-    if (before && before.name === name && before.sort === i) continue;
-    const saved = await Store.savePartner({ projectId, name, sort: i }, p.id || null);
+    if (before && before.name === name && before.sort === i && before.equityPct === (Number(p.equityPct) || 0)) continue;
+    const saved = await Store.savePartner(
+      { projectId, name, sort: i, equityPct: Number(p.equityPct) || 0 },
+      p.id || null
+    );
     const idx = partners.findIndex((x) => x.id === saved.id);
     if (idx > -1) partners[idx] = saved;
     else partners.push(saved);
@@ -1977,6 +2170,7 @@ async function openShareModal() {
   document.getElementById("share-project-name").textContent =
     "Anyone listed here can open \u201c" + p.name + "\u201d.";
   document.getElementById("share-error").classList.add("hidden");
+  document.getElementById("sl-result").classList.add("hidden");
   document.getElementById("share-modal").classList.remove("hidden");
   fillSelect(
     document.getElementById("sh-role"),
@@ -1984,6 +2178,7 @@ async function openShareModal() {
     "editor"
   );
   await renderMembers();
+  await renderShareLinks();
 }
 
 async function renderMembers() {
@@ -2020,6 +2215,301 @@ async function renderMembers() {
         reportError("remove that person", err);
       }
     })
+  );
+}
+
+// ---------- Read-only links ----------
+function shareUrlFor(token) {
+  return location.origin + location.pathname + "#/s/" + token;
+}
+
+async function renderShareLinks() {
+  const el = document.getElementById("link-list");
+  el.innerHTML = '<p class="empty">Loading\u2026</p>';
+  let links;
+  try {
+    links = await Store.getShareLinks(activeProjectId);
+  } catch (err) {
+    el.innerHTML = '<p class="empty">Could not load the links.</p>';
+    console.error(err);
+    return;
+  }
+  if (!links.length) {
+    el.innerHTML = '<p class="empty">No read-only links yet.</p>';
+    return;
+  }
+  el.innerHTML = links
+    .map((l) => {
+      const shows = [
+        l.showBudget ? "budget" : null,
+        l.showLedger ? "line items" : null,
+        l.showSplits ? "splits" : null,
+      ].filter(Boolean);
+      const dead = l.expiresAt && new Date(l.expiresAt) <= new Date();
+      const when = l.expiresAt
+        ? (dead ? "expired " : "expires ") + String(l.expiresAt).slice(0, 10)
+        : "no expiry";
+      return (
+        '<div class="link-row' + (dead ? " link-dead" : "") + '">' +
+        '<div class="link-main">' +
+        '<span class="link-label">' + escapeHtml(l.label || "Untitled link") + "</span>" +
+        '<span class="link-sub">' + escapeHtml(when) +
+        (shows.length ? " \u00b7 shows " + escapeHtml(shows.join(", ")) : " \u00b7 headline figures only") +
+        "</span></div>" +
+        '<button type="button" class="icon-btn" data-link-copy="' + escapeHtml(l.token) + '">Copy</button>' +
+        '<button type="button" class="icon-btn del" data-link-del="' + escapeHtml(l.token) + '">Revoke</button>' +
+        "</div>"
+      );
+    })
+    .join("");
+
+  el.querySelectorAll("[data-link-copy]").forEach((b) =>
+    b.addEventListener("click", () => {
+      copyText(shareUrlFor(b.dataset.linkCopy));
+      b.textContent = "Copied";
+      setTimeout(() => (b.textContent = "Copy"), 1500);
+    })
+  );
+  el.querySelectorAll("[data-link-del]").forEach((b) =>
+    b.addEventListener("click", async () => {
+      if (!confirm("Revoke this link? Anyone still holding it will lose access immediately.")) return;
+      try {
+        await Store.deleteShareLink(b.dataset.linkDel);
+        await renderShareLinks();
+      } catch (err) {
+        reportError("revoke that link", err);
+      }
+    })
+  );
+}
+
+async function createShareLink() {
+  const btn = document.getElementById("sl-create");
+  btn.disabled = true;
+  try {
+    const token = await Store.createShareLink(activeProjectId, {
+      label: document.getElementById("sl-label").value.trim(),
+      showBudget: document.getElementById("sl-budget").checked,
+      showLedger: document.getElementById("sl-ledger").checked,
+      showSplits: document.getElementById("sl-splits").checked,
+      days: parseInt(document.getElementById("sl-days").value, 10),
+    });
+    const url = shareUrlFor(token);
+    copyText(url);
+    const out = document.getElementById("sl-result");
+    out.textContent = "Link copied to your clipboard: " + url;
+    out.classList.remove("hidden");
+    document.getElementById("sl-label").value = "";
+    await renderShareLinks();
+  } catch (err) {
+    reportError("create that link", err);
+  } finally {
+    btn.disabled = false;
+  }
+}
+
+function copyText(text) {
+  if (navigator.clipboard && navigator.clipboard.writeText) {
+    navigator.clipboard.writeText(text).catch(() => {});
+    return;
+  }
+  const ta = document.createElement("textarea");
+  ta.value = text;
+  document.body.appendChild(ta);
+  ta.select();
+  try {
+    document.execCommand("copy");
+  } catch (err) {
+    /* the URL is on screen either way */
+  }
+  ta.remove();
+}
+
+// ===========================================================================
+// STAKEHOLDER VIEW
+//
+// What somebody with a read-only link sees. They have no account, so every
+// figure here comes from the single payload the database hands back for their
+// token — and the same math functions the owner's own page uses, so the two
+// can never disagree.
+// ===========================================================================
+function shareTokenFromHash() {
+  const m = String(location.hash || "").match(/^#\/s\/([A-Za-z0-9]{16,})$/);
+  return m ? m[1] : null;
+}
+
+async function openStakeholderView(token) {
+  shareMode = true;
+  document.getElementById("dashboard-view").classList.add("hidden");
+  document.getElementById("project-view").classList.add("hidden");
+  document.getElementById("crumbs").classList.add("hidden");
+  document.getElementById("auth-btn").classList.add("hidden");
+  document.getElementById("auth-status").textContent = "Shared view";
+  const view = document.getElementById("share-view");
+  view.classList.remove("hidden");
+  view.innerHTML = '<p class="empty">Loading\u2026</p>';
+
+  let payload = null;
+  try {
+    payload = await Store.openShare(token);
+  } catch (err) {
+    console.error(err);
+  }
+
+  if (!payload || !payload.project) {
+    view.innerHTML =
+      '<div class="share-dead"><h2>This link is not working</h2>' +
+      "<p>It has either expired or been revoked by whoever sent it. " +
+      "Ask them for a fresh one.</p></div>";
+    return;
+  }
+  renderShareView(payload);
+}
+
+function renderShareView(payload) {
+  const p = projectFromRow(payload.project);
+  const scope = payload.scope || {};
+
+  // Load the payload into the same globals the owner's page uses, so the math
+  // functions below need no special case for being in shared mode.
+  projects = [p];
+  partners = (payload.partners || []).map(partnerFromRow);
+  budgets = (payload.budget_lines || []).map(budgetFromRow);
+  expenses = (payload.expenses || []).map(expenseFromRow);
+  draws = (payload.draws || []).map(drawFromRow);
+  activeProjectId = p.id;
+
+  const n = allInNumbers(p, expenses, draws);
+  const pr = profitOf(p, expenses, draws);
+
+  const meta = [];
+  if (p.address) meta.push(p.address);
+  if (p.settlementDate) meta.push("Settled " + p.settlementDate);
+  if (p.saleDate) meta.push("Sold " + p.saleDate);
+
+  let html =
+    '<div class="share-banner">Read-only view' +
+    (payload.label ? " for " + escapeHtml(payload.label) : "") +
+    ". Figures are live and update as the project does.</div>" +
+    '<section class="project-head"><div class="project-head-main">' +
+    "<h1>" + escapeHtml(p.name) + "</h1>" +
+    (meta.length ? '<p class="share-meta">' + escapeHtml(meta.join(" \u00b7 ")) + "</p>" : "") +
+    '<span class="' + escapeHtml(statusClass(p.status)) + '">' + escapeHtml(statusLabel(p.status)) + "</span>" +
+    "</div></section>" +
+    '<section class="allin"><div class="allin-label">Total All-In</div>' +
+    '<div class="allin-value">' + money(n.allIn) + "</div>" +
+    '<div class="allin-break">Partner cash <strong>' + money(n.partnerCash) +
+    "</strong> &nbsp;+&nbsp; Lender funded at closing <strong>" + money(n.funded) +
+    "</strong></div></section>";
+
+  if (pr) {
+    html +=
+      '<section class="cards">' +
+      '<div class="card"><div class="card-label">Sale Price</div><div class="card-value">' +
+      money(pr.sale) + "</div></div>" +
+      '<div class="card"><div class="card-label">All-In</div><div class="card-value">' +
+      money(pr.allIn) + "</div></div>" +
+      '<div class="card"><div class="card-label">' +
+      (p.status === "sold" ? "Profit" : "Projected Profit") +
+      '</div><div class="card-value ' + (pr.profit >= 0 ? "pos" : "neg") + '">' +
+      money(pr.profit) + "</div></div></section>";
+  }
+
+  html +=
+    '<section class="cards"><div class="card"><div class="card-label">Lender Payoff</div>' +
+    '<div class="card-value">' + money(n.payoff) + "</div></div>" +
+    '<div class="card"><div class="card-label">Draws Taken</div>' +
+    '<div class="card-value">' + money(n.totalDraws) + "</div></div>" +
+    '<div class="card"><div class="card-label">Holdback Left</div>' +
+    '<div class="card-value">' + money(loanNumbers(p, draws).remaining) + "</div></div></section>";
+
+  if (scope.budget) html += shareBudgetHtml(p);
+  if (scope.splits) html += shareSplitHtml(p);
+  if (scope.ledger) html += shareLedgerHtml(scope);
+
+  html +=
+    '<p class="share-foot">Shared from Project Expense Tracker. ' +
+    (payload.expires_at
+      ? "This link stops working on " + escapeHtml(String(payload.expires_at).slice(0, 10)) + "."
+      : "This link has no expiry date.") +
+    "</p>";
+
+  document.getElementById("share-view").innerHTML = html;
+}
+
+function shareBudgetHtml(p) {
+  const rows = budgetRows(p.id, expenses).filter((r) => r.budget !== null || r.actual !== 0);
+  if (!rows.length) return "";
+  const threshold = Number(p.varianceThreshold) || 10;
+  const body = rows
+    .map((r) => {
+      const cls = r.variance === null ? "" : "var-" + rowHealth(r, threshold);
+      return (
+        "<tr><td>" + escapeHtml(r.category) + "</td>" +
+        "<td>" + (r.budget === null ? "\u2014" : money(r.budget)) + "</td>" +
+        "<td>" + money(r.actual) + "</td>" +
+        '<td class="' + cls + '">' +
+        (r.variance === null ? "\u2014" : (r.variance > 0 ? "+" : "") + money(r.variance)) +
+        "</td></tr>"
+      );
+    })
+    .join("");
+  const budget = rows.reduce((s, r) => s + (r.budget || 0), 0);
+  const actual = rows.reduce((s, r) => s + r.actual, 0);
+  return (
+    '<section class="budget-panel"><div class="breakdown-head"><h2>Budget vs Actual</h2></div>' +
+    '<table class="split-table"><thead><tr><th>Category</th><th>Budget</th><th>Spent</th>' +
+    "<th>Variance</th></tr></thead><tbody>" + body + "</tbody>" +
+    "<tfoot><tr><td>Total</td><td>" + money(budget) + "</td><td>" + money(actual) +
+    "</td><td>" + (actual - budget > 0 ? "+" : "") + money(actual - budget) +
+    "</td></tr></tfoot></table></section>"
+  );
+}
+
+function shareSplitHtml(p) {
+  const w = splitWaterfall(p, partnersOf(p.id), expenses, draws);
+  if (!w) return "";
+  const body = w.rows
+    .map(
+      (r) =>
+        "<tr><td>" + escapeHtml(r.name) + "</td>" +
+        "<td>" + money(r.contributed) + "</td>" +
+        "<td>" + money(r.netCapital) + "</td>" +
+        (w.prefNeed > 0 ? "<td>" + money(r.prefPaid) + "</td>" : "") +
+        "<td>" + money(r.profitShare) + "</td>" +
+        '<td class="split-take">' + money(r.total) + "</td></tr>"
+    )
+    .join("");
+  return (
+    '<section class="split-panel"><div class="breakdown-head"><h2>Who Takes Home What</h2></div>' +
+    '<table class="split-table"><thead><tr><th>Partner</th><th>Put In</th><th>At Risk</th>' +
+    (w.prefNeed > 0 ? "<th>Preferred</th>" : "") +
+    "<th>Profit Share</th><th>Takes Home</th></tr></thead><tbody>" + body + "</tbody></table>" +
+    '<p class="budget-note">Capital comes back first' +
+    (w.prefNeed > 0 ? ", then the preferred return" : "") +
+    ", and the remaining " + money(w.remainder) + " is split.</p></section>"
+  );
+}
+
+function shareLedgerHtml(scope) {
+  const body = expenses
+    .map(
+      (e) =>
+        "<tr><td>" + escapeHtml(e.date) + "</td>" +
+        "<td>" + escapeHtml(e.description || "\u2014") + "</td>" +
+        "<td>" + escapeHtml(e.category) + "</td>" +
+        (scope.splits ? "<td>" + escapeHtml(partnerName(e.partnerId)) + "</td>" : "") +
+        '<td class="dq-amount">' + money(e.amount) + "</td></tr>"
+    )
+    .join("");
+  return (
+    '<section class="ledger-panel"><div class="breakdown-head"><h2>Every Line Item</h2>' +
+    '<span class="muted">' + expenses.length + " entries</span></div>" +
+    '<table class="split-table"><thead><tr><th>Date</th><th>Description</th><th>Category</th>' +
+    (scope.splits ? "<th>Paid By</th>" : "") +
+    "<th>Amount</th></tr></thead><tbody>" + body + "</tbody>" +
+    "<tfoot><tr><td colspan=\"" + (scope.splits ? 4 : 3) + '">Total</td><td class="dq-amount">' +
+    money(sum(expenses)) + "</td></tr></tfoot></table></section>"
   );
 }
 
@@ -2067,6 +2557,7 @@ document.getElementById("new-project-btn").addEventListener("click", () => openP
 document.getElementById("status-filter").addEventListener("change", renderDashboard);
 document.getElementById("settings-btn").addEventListener("click", () => openProjectModal(activeProjectId));
 document.getElementById("share-btn").addEventListener("click", openShareModal);
+document.getElementById("sl-create").addEventListener("click", createShareLink);
 document.getElementById("budget-btn").addEventListener("click", openBudgetModal);
 document.getElementById("bg-cancel").addEventListener("click", closeBudgetModal);
 document.getElementById("draw-request-btn").addEventListener("click", openDrawRequest);
@@ -2142,7 +2633,7 @@ document.getElementById("project-form").addEventListener("submit", (ev) => {
 document.getElementById("pr-cancel").addEventListener("click", closeProjectModal);
 document.getElementById("pr-delete").addEventListener("click", deleteActiveProject);
 document.getElementById("pr-add-partner").addEventListener("click", () => {
-  pendingPartners.push({ id: null, name: "" });
+  pendingPartners.push({ id: null, name: "", equityPct: 0 });
   renderPartnerEditor();
 });
 document.getElementById("project-modal").addEventListener("click", (e) => {
@@ -2338,6 +2829,14 @@ async function boot() {
   if (!(await Store.init())) {
     document.getElementById("auth-status").textContent =
       "Not connected \u2014 add your Supabase URL and key to config.js";
+    return;
+  }
+
+  // A read-only link is opened by somebody with no account, so it must never
+  // go anywhere near the sign-in flow.
+  const token = shareTokenFromHash();
+  if (token) {
+    await openStakeholderView(token);
     return;
   }
 
