@@ -4,6 +4,7 @@
 let projects = [];
 let partners = [];       // partner rows for every project you can see
 let memberships = [];    // your access + everyone else's, per project
+let budgets = [];        // budget lines for every project you can see
 let summaries = [];      // lightweight expense rows for every project
 let allDraws = [];       // draw rows for every project
 
@@ -13,6 +14,7 @@ let activeProjectId = null;
 
 let pendingReceipts = [];
 let pendingPartners = [];
+let pendingBudget = {};
 let currentUser = null;
 let booted = false;
 
@@ -82,6 +84,57 @@ function isOwner(projectId) {
 }
 function memberCount(projectId) {
   return memberships.filter((m) => m.projectId === projectId).length;
+}
+
+// ---------- Budget vs actual ----------
+// One row per category that has either a budget or some spend against it.
+// A category with no budget is reported, but never counted as a variance —
+// you cannot be over a number you never set.
+function budgetRows(projectId, expenseList) {
+  const lines = budgets.filter((b) => b.projectId === projectId);
+  const names = new Set(lines.map((b) => b.category));
+  for (const e of expenseList) if (e.category) names.add(e.category);
+
+  return CATEGORY_NAMES.concat([...names].filter((n) => !CATEGORY_NAMES.includes(n)))
+    .filter((n) => names.has(n))
+    .map((name) => {
+      const line = lines.find((b) => b.category === name);
+      const budget = line ? line.amount : null;
+      const actual = sum(expenseList.filter((e) => e.category === name));
+      const variance = budget === null ? null : actual - budget;
+      return {
+        category: name,
+        group: categoryGroup(name),
+        budget,
+        actual,
+        variance,
+        pct: budget ? (actual / budget) * 100 : null,
+      };
+    });
+}
+
+function healthOf(project, expenseList) {
+  const rows = budgetRows(project.id, expenseList).filter((r) => r.budget !== null);
+  if (!rows.length) return { ...HEALTH.none, over: [], budget: 0, actual: 0 };
+
+  const threshold = Number(project.varianceThreshold) || 10;
+  const budget = rows.reduce((s, r) => s + r.budget, 0);
+  const actual = rows.reduce((s, r) => s + r.actual, 0);
+  const over = rows.filter((r) => r.pct !== null && r.pct > 100 + threshold);
+  const watch = rows.filter((r) => r.pct !== null && r.pct > 100 && r.pct <= 100 + threshold);
+
+  let state = HEALTH.under;
+  if (over.length || actual > budget * (1 + threshold / 100)) state = HEALTH.over;
+  else if (watch.length || actual > budget) state = HEALTH.watch;
+
+  return { ...state, over, watch, budget, actual, threshold };
+}
+
+function rowHealth(row, threshold) {
+  if (row.budget === null) return "none";
+  if (row.pct > 100 + threshold) return "over";
+  if (row.pct > 100) return "watch";
+  return "under";
 }
 
 // ---------- Money math ----------
@@ -198,6 +251,7 @@ function renderDashboard() {
   let portfolioCash = 0;
   let realized = 0;
   let projected = 0;
+  let overBudget = 0;
 
   const cards = visible
     .slice()
@@ -216,6 +270,13 @@ function renderDashboard() {
           money(pr.profit) + "</strong></div>"
         : "";
 
+      const h = healthOf(p, exp);
+      const budgetRow =
+        h.key === "none"
+          ? '<div class="pc-row"><span>Budget</span><strong class="muted">not set</strong></div>'
+          : '<div class="pc-row"><span>Budget used</span><strong>' +
+            money(h.actual) + " of " + money(h.budget) + "</strong></div>";
+
       return (
         '<button class="project-card" data-open="' + escapeHtml(p.id) + '">' +
         '<div class="pc-head">' +
@@ -227,7 +288,13 @@ function renderDashboard() {
         '<div class="pc-rows">' +
         '<div class="pc-row"><span>Partner cash</span><strong>' + money(n.partnerCash) + "</strong></div>" +
         '<div class="pc-row"><span>Lender payoff</span><strong>' + money(n.payoff) + "</strong></div>" +
+        budgetRow +
         profitRow +
+        "</div>" +
+        '<div class="pc-health health-' + h.key + '">' + escapeHtml(h.label) +
+        (h.over && h.over.length
+          ? " · " + h.over.length + " categor" + (h.over.length === 1 ? "y" : "ies") + " over"
+          : "") +
         "</div>" +
         '<div class="pc-foot">' + exp.length + " expense" + (exp.length === 1 ? "" : "s") +
         " \u00b7 " + memberCount(p.id) + " with access \u00b7 " + escapeHtml(myRole(p.id) || "member") +
@@ -248,6 +315,7 @@ function renderDashboard() {
       if (p.status === "sold") realized += pr.profit;
       else projected += pr.profit;
     }
+    if (healthOf(p, exp).key === "over") overBudget++;
   }
 
   document.getElementById("portfolio-allin").textContent = money(portfolioAllIn);
@@ -262,6 +330,9 @@ function renderDashboard() {
 
   document.getElementById("portfolio-stats").innerHTML =
     '<div class="pstat"><span>Projects</span><strong>' + projects.length + "</strong></div>" +
+    (overBudget
+      ? '<div class="pstat"><span>Over budget</span><strong class="neg">' + overBudget + "</strong></div>"
+      : "") +
     (realized
       ? '<div class="pstat"><span>Profit realized</span><strong class="' +
         (realized >= 0 ? "pos" : "neg") + '">' + money(realized) + "</strong></div>"
@@ -309,6 +380,7 @@ function renderProject() {
   renderAllIn(p);
   renderProfit(p);
   renderPartnerCards(p);
+  renderBudget(p);
   renderBreakdown(p);
   renderLoan(p);
   renderGroups();
@@ -383,21 +455,23 @@ function renderPartnerCards(p) {
 }
 
 // ---------- Cost breakdown ----------
-// Buckets roll up from the sections in data.js, so every bucket total and the
-// grand total are derived from the same line items as everything else.
-// The three buckets sum to exactly the all-in headline figure.
+// Buckets roll up from the category groups in data.js, so every bucket total
+// and the grand total are derived from the same line items as everything else.
+// The buckets sum to exactly the all-in headline figure.
 function breakdownGroups(p) {
   const { funded } = loanNumbers(p, draws);
-  return COST_GROUPS.map((g) => {
-    const lines = g.sections.map((name) => ({
-      label: name,
-      amount: sum(expenses.filter((e) => e.section === name)),
-    }));
+  return CATEGORY_GROUPS.map((g) => {
+    const lines = categoriesIn(g.key)
+      .map((name) => ({
+        label: name,
+        amount: sum(expenses.filter((e) => e.category === name)),
+      }))
+      .filter((l) => l.amount !== 0);
     if (g.includeLoanFunded) {
       lines.push({ label: "Lender principal funded at closing", amount: funded, lender: true });
     }
     return { ...g, lines, total: lines.reduce((s, l) => s + l.amount, 0) };
-  });
+  }).filter((g) => g.lines.length);
 }
 
 function renderBreakdown(p) {
@@ -433,9 +507,107 @@ function renderBreakdown(p) {
     .join("");
 
   document.getElementById("breakdown-note").textContent =
-    "These three buckets add up to the " + money(grand) +
+    "These buckets add up to the " + money(grand) +
     " all-in figure above. Construction draws are not counted here — they " +
     "reimburse expenses already listed, and are tracked as lender payoff below.";
+}
+
+// ---------- Budget vs actual ----------
+function renderBudget(p) {
+  const rows = budgetRows(p.id, expenses);
+  const h = healthOf(p, expenses);
+  const threshold = Number(p.varianceThreshold) || 10;
+
+  const badge = document.getElementById("budget-health");
+  badge.textContent = h.label;
+  badge.className = "budget-health health-" + h.key;
+
+  if (!rows.length) {
+    document.getElementById("budget-summary").innerHTML = "";
+    document.getElementById("budget-table").innerHTML =
+      '<p class="empty">No budget yet. Set one and this turns into an early warning system — ' +
+      "you'll see a phase drifting while you can still do something about it.</p>";
+    document.getElementById("budget-note").textContent = "";
+    return;
+  }
+
+  const budgeted = rows.filter((r) => r.budget !== null);
+  const unbudgeted = rows.filter((r) => r.budget === null && r.actual !== 0);
+  const totalBudget = budgeted.reduce((s, r) => s + r.budget, 0);
+  const totalActual = budgeted.reduce((s, r) => s + r.actual, 0);
+  const left = totalBudget - totalActual;
+
+  document.getElementById("budget-summary").innerHTML = totalBudget
+    ? '<div class="bsum"><span>Budgeted</span><strong>' + money(totalBudget) + "</strong></div>" +
+      '<div class="bsum"><span>Spent</span><strong>' + money(totalActual) + "</strong></div>" +
+      '<div class="bsum"><span>' + (left >= 0 ? "Left to spend" : "Over by") +
+      '</span><strong class="' + (left >= 0 ? "pos" : "neg") + '">' + money(Math.abs(left)) +
+      "</strong></div>" +
+      '<div class="bsum"><span>Budget used</span><strong>' +
+      (totalBudget ? ((totalActual / totalBudget) * 100).toFixed(0) : 0) + "%</strong></div>"
+    : "";
+
+  const line = (r) => {
+    const state = rowHealth(r, threshold);
+    const pct = r.pct === null ? null : Math.min(r.pct, 100);
+    const over = r.pct !== null && r.pct > 100 ? Math.min(r.pct - 100, 100) : 0;
+    return (
+      "<tr>" +
+      '<td class="bcat">' + escapeHtml(r.category) + "</td>" +
+      '<td class="amount">' + (r.budget === null ? "—" : money(r.budget)) + "</td>" +
+      '<td class="amount">' + money(r.actual) + "</td>" +
+      '<td class="amount var-' + state + '">' +
+      (r.variance === null ? "—" : (r.variance > 0 ? "+" : "") + money(r.variance)) +
+      "</td>" +
+      '<td class="bbar-cell">' +
+      (r.budget === null
+        ? '<span class="bnobudget">no budget</span>'
+        : '<div class="bbar bbar-' + state + '">' +
+          '<span style="width:' + pct.toFixed(1) + '%"></span>' +
+          (over ? '<i style="width:' + over.toFixed(1) + '%"></i>' : "") +
+          "</div>" +
+          '<span class="bpct">' + r.pct.toFixed(0) + "%</span>") +
+      "</td></tr>"
+    );
+  };
+
+  const section = (key, label) => {
+    const inGroup = rows.filter((r) => r.group === key);
+    if (!inGroup.length) return "";
+    return (
+      '<tr class="bgroup"><td colspan="5">' + escapeHtml(label) + "</td></tr>" +
+      inGroup.map(line).join("")
+    );
+  };
+
+  document.getElementById("budget-table").innerHTML =
+    "<table class=\"budget-table\"><thead><tr>" +
+    "<th>Category / Phase</th>" +
+    '<th class="amount">Budget</th>' +
+    '<th class="amount">Actual</th>' +
+    '<th class="amount">Variance</th>' +
+    '<th class="bbar-col">Used</th>' +
+    "</tr></thead><tbody>" +
+    CATEGORY_GROUPS.map((g) => section(g.key, g.label)).join("") +
+    "</tbody></table>";
+
+  const parts = [];
+  if (h.over && h.over.length) {
+    parts.push(
+      "Over by more than " + threshold + "%: " +
+      h.over.map((r) => r.category + " (" + r.pct.toFixed(0) + "%)").join(", ") + "."
+    );
+  }
+  if (h.watch && h.watch.length) {
+    parts.push("Just over budget: " + h.watch.map((r) => r.category).join(", ") + ".");
+  }
+  if (unbudgeted.length) {
+    parts.push(
+      money(sum(unbudgeted, (r) => r.actual)) + " was spent in " + unbudgeted.length +
+      " categor" + (unbudgeted.length === 1 ? "y" : "ies") + " with no budget set, so it is not counted above."
+    );
+  }
+  document.getElementById("budget-note").textContent = parts.join(" ");
 }
 
 // ---------- Loan payoff ----------
@@ -500,12 +672,14 @@ function renderDrawsTable(p) {
 // ---------- Grouped expense tables ----------
 function groupKey(e, mode) {
   if (mode === "partner") return partnerName(e.partnerId);
-  return e.section || "Uncategorized";
+  if (mode === "costType") return e.costType || "Other";
+  return e.category || "Uncategorized";
 }
 
 function orderedGroups(mode) {
   if (mode === "partner") return partnersOf(activeProjectId).map((p) => p.name);
-  return SECTIONS.slice();
+  if (mode === "costType") return COST_TYPES.map((c) => c.value);
+  return CATEGORY_NAMES.slice();
 }
 
 function renderGroups() {
@@ -605,6 +779,23 @@ function fillSelect(el, values, current) {
     .join("");
 }
 
+// Categories are grouped so the construction phases read as a scope of work
+// rather than one long alphabetical list.
+function fillCategorySelect(el, current) {
+  el.innerHTML = CATEGORY_GROUPS.map(
+    (g) =>
+      '<optgroup label="' + escapeHtml(g.label) + '">' +
+      categoriesIn(g.key)
+        .map(
+          (name) =>
+            '<option value="' + escapeHtml(name) + '"' +
+            (name === current ? " selected" : "") + ">" + escapeHtml(name) + "</option>"
+        )
+        .join("") +
+      "</optgroup>"
+  ).join("");
+}
+
 function openModal(id) {
   const list = partnersOf(activeProjectId);
   if (!list.length) {
@@ -628,10 +819,12 @@ function openModal(id) {
     list.map((p) => ({ value: p.id, label: p.name })),
     existing ? existing.partnerId : list[0].id
   );
+  fillCategorySelect(document.getElementById("f-category"),
+    existing ? existing.category : "General Construction");
   fillSelect(
-    document.getElementById("f-section"),
-    SECTIONS.map((s) => ({ value: s, label: s })),
-    existing ? existing.section : SECTIONS[2]
+    document.getElementById("f-costtype"),
+    COST_TYPES.map((c) => ({ value: c.value, label: c.label })),
+    existing ? existing.costType : defaultCostTypeFor("General Construction")
   );
 
   document.getElementById("modal").classList.remove("hidden");
@@ -656,7 +849,8 @@ async function saveFromForm() {
     notes: document.getElementById("f-notes").value.trim(),
     receipts: pendingReceipts.slice(),
     partnerId: document.getElementById("f-partner").value,
-    section: document.getElementById("f-section").value,
+    category: document.getElementById("f-category").value,
+    costType: document.getElementById("f-costtype").value,
   };
   const id = document.getElementById("f-id").value;
 
@@ -998,11 +1192,111 @@ async function deleteActiveProject() {
   }
   projects = projects.filter((x) => x.id !== id);
   partners = partners.filter((x) => x.projectId !== id);
+  budgets = budgets.filter((x) => x.projectId !== id);
   summaries = summaries.filter((x) => x.projectId !== id);
   allDraws = allDraws.filter((x) => x.projectId !== id);
   memberships = memberships.filter((x) => x.projectId !== id);
   closeProjectModal();
   goDashboard();
+}
+
+// ===========================================================================
+// BUDGET SHEET
+// ===========================================================================
+function openBudgetModal() {
+  const p = activeProject();
+  if (!p) return;
+  pendingBudget = {};
+  for (const b of budgets.filter((x) => x.projectId === p.id)) {
+    pendingBudget[b.category] = b.amount;
+  }
+  document.getElementById("bg-threshold").value = Number(p.varianceThreshold) || 10;
+
+  const spent = {};
+  for (const e of expenses) spent[e.category] = (spent[e.category] || 0) + (Number(e.amount) || 0);
+
+  document.getElementById("budget-editor").innerHTML = CATEGORY_GROUPS.map(
+    (g) =>
+      '<div class="bedit-group"><h4>' + escapeHtml(g.label) + "</h4>" +
+      categoriesIn(g.key)
+        .map((name) => {
+          const val = pendingBudget[name];
+          const already = spent[name] || 0;
+          return (
+            '<div class="bedit-row">' +
+            '<label for="bg-' + escapeHtml(name) + '">' + escapeHtml(name) +
+            (already ? '<span class="bedit-spent">' + money(already) + " already spent</span>" : "") +
+            "</label>" +
+            '<input type="number" step="0.01" min="0" placeholder="\u2014" ' +
+            'id="bg-' + escapeHtml(name) + '" data-budget-cat="' + escapeHtml(name) + '" ' +
+            'value="' + (val === undefined ? "" : val) + '" />' +
+            "</div>"
+          );
+        })
+        .join("") +
+      "</div>"
+  ).join("");
+
+  document.getElementById("budget-editor")
+    .querySelectorAll("[data-budget-cat]")
+    .forEach((input) =>
+      input.addEventListener("input", () => {
+        const cat = input.dataset.budgetCat;
+        if (input.value === "") delete pendingBudget[cat];
+        else pendingBudget[cat] = parseFloat(input.value) || 0;
+        updateBudgetTotal();
+      })
+    );
+
+  updateBudgetTotal();
+  document.getElementById("budget-modal").classList.remove("hidden");
+}
+
+function updateBudgetTotal() {
+  document.getElementById("bg-total").textContent =
+    money(Object.values(pendingBudget).reduce((s, v) => s + (Number(v) || 0), 0));
+}
+
+function closeBudgetModal() {
+  document.getElementById("budget-modal").classList.add("hidden");
+  pendingBudget = {};
+}
+
+async function saveBudgetFromForm() {
+  const p = activeProject();
+  const threshold = parseFloat(document.getElementById("bg-threshold").value);
+  const existing = budgets.filter((b) => b.projectId === p.id);
+
+  try {
+    // Clearing a field means "stop tracking this category", so the line goes.
+    for (const line of existing) {
+      if (pendingBudget[line.category] === undefined) {
+        await Store.deleteBudgetLine(line.id);
+        budgets = budgets.filter((b) => b.id !== line.id);
+      }
+    }
+    for (const [category, amount] of Object.entries(pendingBudget)) {
+      const before = existing.find((b) => b.category === category);
+      if (before && before.amount === amount) continue;
+      const saved = await Store.saveBudgetLine(
+        { projectId: p.id, category, amount },
+        before ? before.id : null
+      );
+      const i = budgets.findIndex((b) => b.id === saved.id);
+      if (i > -1) budgets[i] = saved;
+      else budgets.push(saved);
+    }
+    if (!Number.isNaN(threshold) && threshold !== p.varianceThreshold) {
+      const saved = await Store.saveProject({ ...p, varianceThreshold: threshold }, p.id);
+      projects[projects.findIndex((x) => x.id === p.id)] = saved;
+    }
+  } catch (err) {
+    reportError("save the budget", err);
+    return;
+  }
+
+  closeBudgetModal();
+  renderProject();
 }
 
 // ===========================================================================
@@ -1065,7 +1359,7 @@ async function renderMembers() {
 // ===========================================================================
 function exportCsv() {
   const p = activeProject();
-  const headers = ["Project", "Date", "Description", "Notes", "Section", "Paid By", "Amount", "Receipts"];
+  const headers = ["Project", "Date", "Description", "Notes", "Category", "Cost Type", "Paid By", "Amount", "Receipts"];
   const lines = [headers.join(",")];
   for (const e of expenses) {
     const row = [
@@ -1073,7 +1367,8 @@ function exportCsv() {
       e.date,
       e.description,
       e.notes || "",
-      e.section,
+      e.category,
+      e.costType,
       partnerName(e.partnerId),
       (Number(e.amount) || 0).toFixed(2),
       Array.isArray(e.receipts) ? e.receipts.length : 0,
@@ -1102,6 +1397,22 @@ document.getElementById("new-project-btn").addEventListener("click", () => openP
 document.getElementById("status-filter").addEventListener("change", renderDashboard);
 document.getElementById("settings-btn").addEventListener("click", () => openProjectModal(activeProjectId));
 document.getElementById("share-btn").addEventListener("click", openShareModal);
+document.getElementById("budget-btn").addEventListener("click", openBudgetModal);
+document.getElementById("bg-cancel").addEventListener("click", closeBudgetModal);
+document.getElementById("budget-form").addEventListener("submit", (ev) => {
+  ev.preventDefault();
+  saveBudgetFromForm();
+});
+document.getElementById("budget-modal").addEventListener("click", (e) => {
+  if (e.target.id === "budget-modal") closeBudgetModal();
+});
+
+// Picking a phase pre-selects the kind of spend it usually is, but never
+// overrides a choice already made on an existing expense.
+document.getElementById("f-category").addEventListener("change", (ev) => {
+  if (document.getElementById("f-id").value) return;
+  document.getElementById("f-costtype").value = defaultCostTypeFor(ev.target.value);
+});
 
 document.getElementById("p-status").addEventListener("change", async (ev) => {
   const p = activeProject();
@@ -1184,6 +1495,7 @@ document.addEventListener("keydown", (e) => {
   closeModal();
   closeDrawModal();
   closeProjectModal();
+  closeBudgetModal();
   document.getElementById("share-modal").classList.add("hidden");
 });
 
@@ -1269,10 +1581,11 @@ function fillStaticSelects() {
 }
 
 async function loadAll() {
-  [projects, partners, memberships, summaries, allDraws] = await Promise.all([
+  [projects, partners, memberships, budgets, summaries, allDraws] = await Promise.all([
     Store.getProjects(),
     Store.getPartners(),
     Store.getMemberships(),
+    Store.getBudgetLines(),
     Store.getExpenseSummaries(),
     Store.getDraws(null),
   ]);
@@ -1298,6 +1611,7 @@ function onSignedOut() {
   projects = [];
   partners = [];
   memberships = [];
+  budgets = [];
   summaries = [];
   allDraws = [];
   expenses = [];

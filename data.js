@@ -1,10 +1,9 @@
 "use strict";
 
 // ---------------------------------------------------------------------------
-// Shared vocabulary. Everything that used to be hard-coded for one property
-// (address, lender, loan amounts, partner names) now lives on each project row
-// in the database. What is left here is the stuff that is the same for every
-// deal: the sections you file an expense under and the buckets they roll into.
+// Shared vocabulary. Everything specific to one property (address, lender,
+// loan amounts, partner names, budget) lives on the project row in the
+// database. What is here is the language every deal shares.
 // ---------------------------------------------------------------------------
 
 // Lifecycle of a deal, in order.
@@ -21,37 +20,90 @@ function statusLabel(value) {
   return s ? s.label : "Before Closing";
 }
 
-// The four everyday sections every project is organized by.
-const SECTIONS = [
-  "Closing & Deal Costs",
-  "Utilities, Insurance, Loan & Taxes",
-  "Materials, Tools & Supplies",
-  "Contractors, Crew & Services",
-];
-
-// Roll-up buckets that answer the three questions that actually matter:
-// what did it cost to BUY it, to FIX it, and to HOLD it.
-// Each bucket is built from the sections above, so nothing has to be
-// re-tagged — add an expense to a section and it lands in the right bucket.
-const COST_GROUPS = [
+// ---------------------------------------------------------------------------
+// Categories.
+//
+// The construction phases are the Scope of Work — the order a house actually
+// gets built in. But a flip is not only construction: money goes out before
+// you own it and after the work is done, and those dollars have no phase. So
+// the phase list sits inside a wider set of four buckets that together cover
+// every dollar in the deal.
+// ---------------------------------------------------------------------------
+const CATEGORY_GROUPS = [
   {
+    key: "acquire",
     label: "Cost To Purchase",
     blurb:
       "Everything it took to acquire the property — closing costs, fees, " +
       "deposits, plus the loan principal the lender funded at settlement.",
-    sections: [SECTIONS[0]],
     includeLoanFunded: true,
   },
   {
+    key: "build",
     label: "Cost To Do The Work",
-    blurb: "The renovation itself — materials, tools, contractors and crew.",
-    sections: [SECTIONS[2], SECTIONS[3]],
+    blurb: "The renovation itself, phase by phase — the scope of work you budgeted.",
   },
   {
+    key: "hold",
     label: "Cost To Hold",
-    blurb: "Carrying the property — utilities, insurance, loan payments and taxes.",
-    sections: [SECTIONS[1]],
+    blurb: "Carrying the property — utilities, insurance, taxes and loan payments.",
   },
+  {
+    key: "sell",
+    label: "Cost To Sell",
+    blurb: "Getting it off your books — commissions, staging, concessions and seller-paid closing.",
+  },
+];
+
+// Order matters: this is the sequence they appear in every dropdown, budget
+// sheet and report, and it follows the real order of a job.
+const CATEGORIES = [
+  { name: "Closing & Deal Costs", group: "acquire", defaultCostType: "Fees" },
+
+  { name: "Permits & Inspections",           group: "build", defaultCostType: "Fees" },
+  { name: "Demolition & Debris",             group: "build", defaultCostType: "Labor" },
+  { name: "Framing & Structural",            group: "build", defaultCostType: "Labor" },
+  { name: "Roofing & Exterior",              group: "build", defaultCostType: "Labor" },
+  { name: "Windows & Doors",                 group: "build", defaultCostType: "Materials" },
+  { name: "MEP — Mechanical, Electrical, Plumbing", group: "build", defaultCostType: "Labor" },
+  { name: "Insulation & Drywall",            group: "build", defaultCostType: "Labor" },
+  { name: "Kitchen & Bath",                  group: "build", defaultCostType: "Materials" },
+  { name: "Interior Finishes",               group: "build", defaultCostType: "Materials" },
+  { name: "Flooring",                        group: "build", defaultCostType: "Materials" },
+  { name: "Landscaping & Curb Appeal",       group: "build", defaultCostType: "Labor" },
+  { name: "General Construction",            group: "build", defaultCostType: "Materials" },
+  { name: "Contingency & Misc",              group: "build", defaultCostType: "Other" },
+
+  { name: "Utilities, Insurance, Taxes & Loan", group: "hold", defaultCostType: "Fees" },
+
+  { name: "Sale & Disposition Costs", group: "sell", defaultCostType: "Fees" },
+];
+
+const CATEGORY_NAMES = CATEGORIES.map((c) => c.name);
+
+function categoryGroup(name) {
+  const c = CATEGORIES.find((x) => x.name === name);
+  return c ? c.group : "build";
+}
+
+function categoriesIn(groupKey) {
+  return CATEGORIES.filter((c) => c.group === groupKey).map((c) => c.name);
+}
+
+function defaultCostTypeFor(category) {
+  const c = CATEGORIES.find((x) => x.name === category);
+  return c ? c.defaultCostType : "Other";
+}
+
+// The second axis: what kind of spend it was. Kept separate from the phase
+// because "who do I file a 1099 for" is a different question from "what part
+// of the house did this pay for".
+const COST_TYPES = [
+  { value: "Materials", label: "Materials", is1099: false },
+  { value: "Labor",     label: "Labor / Subcontractor", is1099: true },
+  { value: "Services",  label: "Services (rentals, hauling, cleaning)", is1099: true },
+  { value: "Fees",      label: "Fees, Taxes & Insurance", is1099: false },
+  { value: "Other",     label: "Other", is1099: false },
 ];
 
 // A brand-new project starts with two money partners; rename or add more in
@@ -63,3 +115,11 @@ const MEMBER_ROLES = [
   { value: "editor", label: "Editor", hint: "Can add and change expenses" },
   { value: "viewer", label: "Viewer", hint: "Read only" },
 ];
+
+// How a project's budget health is described once it drifts.
+const HEALTH = {
+  none:  { key: "none",  label: "No Budget Set" },
+  under: { key: "under", label: "On Budget" },
+  watch: { key: "watch", label: "Watch" },
+  over:  { key: "over",  label: "Over Budget" },
+};

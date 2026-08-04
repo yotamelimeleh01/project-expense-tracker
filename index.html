@@ -100,6 +100,20 @@
       <!-- Who paid what -->
       <section class="cards" id="partner-cards" aria-label="Partner totals"></section>
 
+      <!-- Budget vs actual -->
+      <section class="budget-panel" aria-label="Budget versus actual">
+        <div class="breakdown-head">
+          <h2>Budget vs Actual</h2>
+          <div class="budget-head-right">
+            <span class="budget-health" id="budget-health"></span>
+            <button id="budget-btn" class="btn">Edit Scope &amp; Budget</button>
+          </div>
+        </div>
+        <div id="budget-summary" class="budget-summary"></div>
+        <div id="budget-table"></div>
+        <p class="breakdown-note" id="budget-note"></p>
+      </section>
+
       <!-- Cost breakdown by bucket -->
       <section class="breakdown" aria-label="Cost breakdown">
         <div class="breakdown-head">
@@ -144,7 +158,8 @@
         <div class="spacer"></div>
         <label class="group-label">Group by
           <select id="group-select">
-            <option value="section">Section</option>
+            <option value="category">Category / Phase</option>
+            <option value="costType">Cost Type</option>
             <option value="partner">Paid By</option>
           </select>
         </label>
@@ -176,8 +191,11 @@
           <label>Paid By
             <select id="f-partner" required></select>
           </label>
-          <label>Section
-            <select id="f-section"></select>
+          <label>Category / Phase
+            <select id="f-category"></select>
+          </label>
+          <label>Cost Type
+            <select id="f-costtype"></select>
           </label>
           <label class="full">Notes / What's in this expense
             <textarea id="f-notes" rows="3" placeholder="e.g. 2x sheets drywall, 4 gal paint, screws &amp; caulk"></textarea>
@@ -217,6 +235,31 @@
         <div class="modal-actions">
           <button type="button" id="draw-cancel-btn" class="btn">Cancel</button>
           <button type="submit" class="btn btn-primary">Save</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <!-- Scope of work / budget sheet -->
+  <div id="budget-modal" class="modal-overlay hidden">
+    <div class="modal modal-lg">
+      <h2>Scope of Work &amp; Budget</h2>
+      <p class="modal-hint">
+        Put a number against each phase you plan to spend on. Leave the rest blank —
+        only budgeted categories are tracked for variance.
+      </p>
+      <form id="budget-form">
+        <label class="threshold-field">Flag a category as over budget once it passes
+          <input type="number" id="bg-threshold" step="1" min="0" max="100" value="10" /> %
+        </label>
+        <div id="budget-editor"></div>
+        <div class="budget-editor-total">
+          <span>Total budget</span>
+          <strong id="bg-total">$0.00</strong>
+        </div>
+        <div class="modal-actions">
+          <button type="button" id="bg-cancel" class="btn">Cancel</button>
+          <button type="submit" class="btn btn-primary">Save Budget</button>
         </div>
       </form>
     </div>

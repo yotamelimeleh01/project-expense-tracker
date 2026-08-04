@@ -47,12 +47,30 @@ They are deliberately separate:
 Access is enforced by Postgres Row Level Security, not by the browser — a
 project you are not a member of is invisible to you at the database level.
 
-### Sections
+### Categories
 
-1. **Closing & Deal Costs** — everyone who took a cut at settlement
-2. **Utilities, Insurance, Loan & Taxes** — ongoing costs after closing
-3. **Materials, Tools & Supplies**
-4. **Contractors, Crew & Services**
+Every expense is filed under a **category** (what the money was for) and a
+**cost type** (what kind of spend it was — materials, labour, services, fees).
+The two axes are independent, so "who do I owe a 1099" and "how much did the
+kitchen cost" are both answerable from the same rows.
+
+Categories roll up into four buckets:
+
+1. **Cost To Purchase** — closing and deal costs, plus the lender principal
+2. **Cost To Do The Work** — the construction phases, permits through landscaping
+3. **Cost To Hold** — utilities, insurance, taxes and loan carry
+4. **Cost To Sell** — commissions and disposition costs
+
+### Budget vs actual
+
+Set a number against any category on a project and the app tracks spend
+against it. A category with no budget is still listed, but never counted as a
+variance — you cannot be over a number you never set.
+
+Each project has a variance threshold (10% by default). Once a category passes
+its budget the project is flagged **Watch**; once it passes the threshold it is
+flagged **Over Budget**, on the project page and on the dashboard card, so a
+phase that is drifting shows up while there is still time to react.
 
 ### Why draws are not added to all-in
 
@@ -78,9 +96,11 @@ Open **SQL Editor → New query** and run these in order:
 1. [`supabase-setup.sql`](supabase-setup.sql) — the expense and draw tables
 2. [`supabase-multiproject.sql`](supabase-multiproject.sql) — projects,
    partners, access control, and RLS
+3. [`supabase-phase1-budgets.sql`](supabase-phase1-budgets.sql) — categories,
+   cost types, and budget lines
 
-The second script is additive and safe to re-run. On an existing single-project
-database it moves everything you already have into a project rather than
+Every script after the first is additive and safe to re-run. On an existing
+database they move what you already have onto the new shape rather than
 deleting anything.
 
 ### 3. Create logins

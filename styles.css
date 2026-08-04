@@ -643,6 +643,139 @@ tbody td { padding: 10px 12px; font-size: 14px; border-bottom: 1px solid var(--l
 .member-lock { font-size: 11px; color: var(--muted); }
 .share-form { border-top: 1px solid var(--line); padding-top: 16px; }
 
+/* ---------- Budget vs actual ---------- */
+.budget-panel {
+  background: #fff;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  padding: 18px;
+  margin-bottom: 18px;
+}
+.budget-head-right { display: flex; align-items: center; gap: 12px; }
+.budget-health {
+  font-size: 11px;
+  font-weight: 700;
+  padding: 3px 10px;
+  border-radius: 999px;
+  border: 1px solid transparent;
+  white-space: nowrap;
+}
+.health-none  { background: #f1f5f9; color: var(--muted); border-color: var(--line); }
+.health-under { background: #f0fdf4; color: #15803d; border-color: #bbf7d0; }
+.health-watch { background: #fffbeb; color: #b45309; border-color: #fde68a; }
+.health-over  { background: #fef2f2; color: #b91c1c; border-color: #fecaca; }
+
+.budget-summary {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(130px, 1fr));
+  gap: 12px;
+  margin: 14px 0 18px;
+}
+.bsum {
+  background: var(--bg);
+  border-radius: 10px;
+  padding: 10px 12px;
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.7px;
+  color: var(--muted);
+}
+.bsum strong { display: block; font-size: 19px; letter-spacing: 0; text-transform: none; color: var(--text); margin-top: 3px; }
+.bsum .pos { color: var(--green); }
+.bsum .neg { color: var(--danger); }
+
+.budget-table { width: 100%; border-collapse: collapse; font-size: 13px; }
+.budget-table th {
+  text-align: left;
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.7px;
+  color: var(--muted);
+  padding: 6px 10px;
+  border-bottom: 1px solid var(--line);
+}
+.budget-table td { padding: 8px 10px; border-bottom: 1px solid #f1f5f9; }
+.budget-table tr.bgroup td {
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.8px;
+  font-weight: 700;
+  color: var(--muted);
+  background: var(--bg);
+  padding: 6px 10px;
+}
+.bcat { font-weight: 500; }
+.var-over  { color: var(--danger); font-weight: 700; }
+.var-watch { color: #b45309; font-weight: 600; }
+.var-under { color: var(--green); }
+.var-none  { color: var(--muted); }
+.bbar-col { width: 170px; }
+.bbar-cell { display: flex; align-items: center; gap: 8px; }
+.bbar {
+  flex: 1;
+  display: flex;
+  height: 8px;
+  min-width: 70px;
+  background: #eef2f7;
+  border-radius: 999px;
+  overflow: hidden;
+}
+.bbar span { display: block; height: 100%; background: var(--green); }
+.bbar i { display: block; height: 100%; background: var(--danger); }
+.bbar-watch span { background: #f59e0b; }
+.bbar-over span { background: #f59e0b; }
+.bpct { font-size: 11px; color: var(--muted); width: 34px; text-align: right; }
+.bnobudget { font-size: 11px; color: var(--muted); font-style: italic; }
+
+/* Budget sheet editor */
+.threshold-field {
+  display: block;
+  font-size: 13px;
+  color: var(--muted);
+  margin-bottom: 16px;
+}
+.threshold-field input { width: 70px; margin: 0 4px 0 8px; }
+.bedit-group { margin-bottom: 18px; }
+.bedit-group h4 {
+  margin: 0 0 8px;
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.8px;
+  color: var(--muted);
+  border-bottom: 1px solid var(--line);
+  padding-bottom: 5px;
+}
+.bedit-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 4px 0;
+}
+.bedit-row label { font-size: 13px; display: flex; flex-direction: column; }
+.bedit-spent { font-size: 11px; color: var(--muted); }
+.bedit-row input { width: 130px; }
+.budget-editor-total {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  border-top: 2px solid var(--line);
+  padding-top: 12px;
+  font-size: 13px;
+  color: var(--muted);
+}
+.budget-editor-total strong { font-size: 20px; color: var(--text); }
+
+.pc-health {
+  margin-top: 12px;
+  font-size: 11px;
+  font-weight: 700;
+  padding: 4px 9px;
+  border-radius: 6px;
+  display: inline-block;
+}
+.pc-row .muted { color: var(--muted); font-weight: 400; }
+
 .footer {
   max-width: 1100px;
   margin: 20px auto 40px;

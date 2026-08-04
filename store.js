@@ -184,13 +184,47 @@ const Store = {
     if (error) throw error;
   },
 
+  // ---------- Budget ----------
+  // Loaded for every project at once: the dashboard needs each project's
+  // budget to show a health badge, and the numbers are tiny.
+  async getBudgetLines() {
+    const rows = await this.select("budget_lines", "*");
+    return rows.map(budgetFromRow);
+  },
+
+  async saveBudgetLine(record, id) {
+    await this.requireSession();
+    const row = {
+      id: id || newId(),
+      project_id: record.projectId,
+      category: record.category,
+      amount: Number(record.amount) || 0,
+      notes: record.notes || null,
+    };
+    // Upsert on (project_id, category) so re-saving the budget sheet updates
+    // in place instead of piling up duplicate lines.
+    const { data, error } = await this.client
+      .from("budget_lines")
+      .upsert(row, { onConflict: "project_id,category" })
+      .select()
+      .single();
+    if (error) throw error;
+    return budgetFromRow(data);
+  },
+
+  async deleteBudgetLine(id) {
+    await this.requireSession();
+    const { error } = await this.client.from("budget_lines").delete().eq("id", id);
+    if (error) throw error;
+  },
+
   // ---------- Ledger ----------
   // The dashboard needs every project's totals but none of the receipt images,
   // which are base64 and by far the heaviest column. Ask for just the numbers.
   async getExpenseSummaries() {
     const rows = await this.select(
       "expenses",
-      "id,project_id,date,description,section,partner_id,paid_by,amount"
+      "id,project_id,date,description,category,cost_type,partner_id,amount"
     );
     return rows.map(expenseFromRow);
   },
@@ -255,6 +289,7 @@ function projectToRow(p, id) {
     settlement_date: p.settlementDate || null,
     loan_amount: Number(p.loanAmount) || 0,
     loan_holdback: Number(p.loanHoldback) || 0,
+    variance_threshold: Number(p.varianceThreshold) || 10,
     purchase_price: num(p.purchasePrice),
     sale_price: num(p.salePrice),
     sale_date: p.saleDate || null,
@@ -273,6 +308,9 @@ function projectFromRow(r) {
     settlementDate: r.settlement_date || "",
     loanAmount: Number(r.loan_amount) || 0,
     loanHoldback: Number(r.loan_holdback) || 0,
+    varianceThreshold: r.variance_threshold === null || r.variance_threshold === undefined
+      ? 10
+      : Number(r.variance_threshold),
     purchasePrice: num(r.purchase_price),
     salePrice: num(r.sale_price),
     saleDate: r.sale_date || "",
@@ -291,6 +329,16 @@ function partnerFromRow(r) {
   };
 }
 
+function budgetFromRow(r) {
+  return {
+    id: r.id,
+    projectId: r.project_id,
+    category: r.category,
+    amount: Number(r.amount) || 0,
+    notes: r.notes || "",
+  };
+}
+
 function expenseToRow(e, id) {
   return {
     id,
@@ -298,7 +346,8 @@ function expenseToRow(e, id) {
     date: e.date || null,
     description: e.description,
     notes: e.notes || null,
-    section: e.section,
+    category: e.category,
+    cost_type: e.costType || "Other",
     partner_id: e.partnerId || null,
     amount: Number(e.amount) || 0,
     receipts: Array.isArray(e.receipts) ? e.receipts : [],
@@ -312,7 +361,8 @@ function expenseFromRow(r) {
     date: r.date || "",
     description: r.description || "",
     notes: r.notes || "",
-    section: r.section || "",
+    category: r.category || "",
+    costType: r.cost_type || "Other",
     partnerId: r.partner_id || null,
     amount: Number(r.amount) || 0,
     receipts: Array.isArray(r.receipts) ? r.receipts : [],
