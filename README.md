@@ -198,7 +198,7 @@ from the vendor's name, and if the vendor is already in the contractor
 directory it selects them, so the 1099 total keeps adding up without anyone
 choosing from a dropdown on a phone.
 
-Two rules make it safe to use. Nothing you typed is ever overwritten \u2014 a guess
+Two rules make it safe to use. Nothing you typed is ever overwritten — a guess
 off a crumpled photo does not get to beat a figure somebody entered
 deliberately. And every field it filled is listed underneath with an **Undo**,
 because the point is to save typing, not to be trusted.
@@ -210,7 +210,7 @@ were printed. Two decimal places are required before anything counts as money,
 which is what keeps phone numbers and item codes out of the amount.
 
 The reader is 2 MB of WebAssembly and is only downloaded the first time you ask
-for it, never on load. It runs entirely on the phone \u2014 no photo is sent
+for it, never on load. It runs entirely on the phone — no photo is sent
 anywhere for reading.
 
 ### On site with no signal
@@ -280,7 +280,7 @@ Every script after the first is additive and safe to re-run. On an existing
 database they move what you already have onto the new shape rather than
 deleting anything.
 
-Working offline needs no migration \u2014 the queue and the cached copy live in the
+Working offline needs no migration — the queue and the cached copy live in the
 browser, not the database.
 
 ### 3. Create logins
