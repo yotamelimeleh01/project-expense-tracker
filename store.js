@@ -104,7 +104,15 @@ const SupabaseStore = {
   },
 
   onAuthChange(cb) {
-    this.client.auth.onAuthStateChange((_event, session) => cb(session ? session.user : null));
+    this.client.auth.onAuthStateChange((_event, session) => {
+      // Never call other Supabase methods synchronously from inside this
+      // callback: supabase-js holds an internal auth lock while it runs, and
+      // any nested call that needs the session (a query, signOut) will wait on
+      // that lock forever. setTimeout pushes the work into a fresh task, after
+      // the lock has been released.
+      const user = session ? session.user : null;
+      setTimeout(() => cb(user), 0);
+    });
   },
 
   async signIn(email, password) {
@@ -116,7 +124,21 @@ const SupabaseStore = {
     await this.client.auth.signOut();
   },
 
+  // Row Level Security answers an unauthenticated SELECT with an empty list and
+  // a 200, not an error. Querying a beat too early therefore looks exactly like
+  // "all your data is gone". Wait for the session to be in place first, and
+  // fail loudly rather than silently reporting an empty ledger.
+  async requireSession() {
+    for (let attempt = 0; attempt < 20; attempt++) {
+      const { data } = await this.client.auth.getSession();
+      if (data.session) return data.session;
+      await new Promise((r) => setTimeout(r, 100));
+    }
+    throw new Error("Not signed in \u2014 could not reach your data.");
+  },
+
   async getExpenses() {
+    await this.requireSession();
     const { data, error } = await this.client
       .from("expenses")
       .select("*")
@@ -126,6 +148,7 @@ const SupabaseStore = {
   },
 
   async getDraws() {
+    await this.requireSession();
     const { data, error } = await this.client
       .from("draws")
       .select("*")
@@ -135,6 +158,7 @@ const SupabaseStore = {
   },
 
   async saveExpense(record, id) {
+    await this.requireSession();
     const row = expenseToRow(record, id || newId());
     const { data, error } = await this.client.from("expenses").upsert(row).select().single();
     if (error) throw error;
@@ -142,11 +166,13 @@ const SupabaseStore = {
   },
 
   async deleteExpense(id) {
+    await this.requireSession();
     const { error } = await this.client.from("expenses").delete().eq("id", id);
     if (error) throw error;
   },
 
   async saveDraw(record, id) {
+    await this.requireSession();
     const row = drawToRow(record, id || newId());
     const { data, error } = await this.client.from("draws").upsert(row).select().single();
     if (error) throw error;
@@ -154,36 +180,9 @@ const SupabaseStore = {
   },
 
   async deleteDraw(id) {
+    await this.requireSession();
     const { error } = await this.client.from("draws").delete().eq("id", id);
     if (error) throw error;
-  },
-
-  async replaceAll(expenses, draws) {
-    // neq on a value no id can hold = "delete everything" without disabling RLS.
-    let res = await this.client.from("expenses").delete().neq("id", "__none__");
-    if (res.error) throw res.error;
-    if (expenses.length) {
-      res = await this.client
-        .from("expenses")
-        .insert(expenses.map((e) => expenseToRow(e, e.id || newId())));
-      if (res.error) throw res.error;
-    }
-    if (draws) {
-      res = await this.client.from("draws").delete().neq("id", "__none__");
-      if (res.error) throw res.error;
-      if (draws.length) {
-        res = await this.client.from("draws").insert(draws.map((d) => drawToRow(d, d.id || newId())));
-        if (res.error) throw res.error;
-      }
-    }
-  },
-
-  // Pull anything still sitting in this browser's offline storage into the cloud.
-  async importLocalData() {
-    const expenses = await LocalStore.getExpenses();
-    const draws = await LocalStore.getDraws();
-    await this.replaceAll(expenses, draws);
-    return expenses.length;
   },
 };
 

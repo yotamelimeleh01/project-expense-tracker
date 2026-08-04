@@ -580,10 +580,24 @@ document.addEventListener("keydown", (e) => {
     closeDrawModal();
   }
 });
-document.getElementById("auth-btn").addEventListener("click", () => {
+document.getElementById("auth-btn").addEventListener("click", async () => {
   if (Store.mode !== "cloud") return;
-  if (currentUser) Store.signOut();
-  else openLoginModal();
+  if (!currentUser) {
+    openLoginModal();
+    return;
+  }
+  const btn = document.getElementById("auth-btn");
+  btn.disabled = true;
+  btn.textContent = "Signing out\u2026";
+  try {
+    await Store.signOut();
+  } catch (err) {
+    reportError("sign out", err);
+  } finally {
+    btn.disabled = false;
+    // Don't wait on the auth event to come back — drop to signed-out locally.
+    if (currentUser) onSignedOut();
+  }
 });
 document.getElementById("login-form").addEventListener("submit", async (ev) => {
   ev.preventDefault();
@@ -602,6 +616,7 @@ document.getElementById("login-form").addEventListener("submit", async (ev) => {
 
 // ---------- Boot ----------
 let currentUser = null;
+let booted = false;
 
 function openLoginModal() {
   document.getElementById("login-error").classList.add("hidden");
@@ -637,7 +652,6 @@ function setAuthUi(user) {
     btn.textContent = "Sign In";
   }
 }
-
 async function loadAll() {
   expenses = await Store.getExpenses();
   draws = await Store.getDraws();
@@ -646,32 +660,22 @@ async function loadAll() {
 
 async function onSignedIn(user) {
   currentUser = user;
+  booted = true;
   setAuthUi(user);
   closeLoginModal();
   setAppEnabled(true);
   try {
     await loadAll();
-    // First run against an empty cloud database: offer to move local data up.
-    if (!expenses.length && !draws.length) {
-      const local = await LocalStore.getExpenses();
-      if (
-        local.length &&
-        confirm(
-          "Your cloud database is empty.\n\nUpload the " + local.length +
-            " expenses currently saved in this browser to the cloud?"
-        )
-      ) {
-        await SupabaseStore.importLocalData();
-        await loadAll();
-      }
-    }
   } catch (err) {
+    document.getElementById("auth-status").textContent =
+      "Signed in \u00b7 could not load data";
     reportError("load your data", err);
   }
 }
 
 function onSignedOut() {
   currentUser = null;
+  booted = true;
   expenses = [];
   draws = [];
   setAuthUi(null);
@@ -682,16 +686,31 @@ function onSignedOut() {
 
 async function boot() {
   await Store.init();
+
   if (Store.mode === "local") {
     setAuthUi(null);
     setAppEnabled(true);
     await loadAll();
     return;
   }
-  Store.onAuthChange((user) => (user ? onSignedIn(user) : onSignedOut()));
+
+  // Restoring a saved session takes a moment. Say so instead of flashing an
+  // empty ledger that looks like the data is gone.
+  document.getElementById("auth-status").textContent = "Restoring session\u2026";
+
+  // Supabase re-fires auth events on load, on token refresh and on tab focus.
+  // Only react when the signed-in identity actually changes, so a routine
+  // token refresh never wipes the screen or reloads the ledger.
+  Store.onAuthChange((user) => {
+    if (user && currentUser && user.id === currentUser.id) return;
+    if (user) onSignedIn(user);
+    else if (currentUser || !booted) onSignedOut();
+  });
+
+  // Safety net in case the initial auth event never arrives.
   const user = await Store.currentUser();
-  if (user) await onSignedIn(user);
-  else onSignedOut();
+  if (user && !currentUser) onSignedIn(user);
+  else if (!user && !currentUser) onSignedOut();
 }
 
 boot();
