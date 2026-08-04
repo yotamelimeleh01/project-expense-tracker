@@ -72,6 +72,29 @@ its budget the project is flagged **Watch**; once it passes the threshold it is
 flagged **Over Budget**, on the project page and on the dashboard card, so a
 phase that is drifting shows up while there is still time to react.
 
+### Receipts
+
+Photos are resized in the browser and uploaded to a private Supabase Storage
+bucket, filed under `<project>/<expense>/`. Nothing in the bucket is readable
+without a signed URL, and the same membership rules that hide a project's
+ledger hide its photos.
+
+Receipts taken before this change were stored as base64 inside the expense row.
+The app moves them across the first time you open the project: it uploads the
+image, checks the upload is readable, and only then rewrites the row. If any
+step fails the original is left exactly where it was.
+
+### Lender draw request
+
+**Draw Request** in the loan panel lists everything filed under *Cost To Do The
+Work* since your last draw, already ticked. Untick what the lender will not
+reimburse and print it, or save it as a PDF from the print dialog. The document
+carries the property, borrower, lender, loan position, an itemised schedule
+subtotalled by category, a certification paragraph and a signature line.
+
+It warns you if the request exceeds the holdback remaining, or if any line has
+no receipt attached — the usual reason a draw sits on someone's desk.
+
 ### Why draws are not added to all-in
 
 A construction draw reimburses an expense that is already a line item, so
@@ -98,6 +121,8 @@ Open **SQL Editor → New query** and run these in order:
    partners, access control, and RLS
 3. [`supabase-phase1-budgets.sql`](supabase-phase1-budgets.sql) — categories,
    cost types, and budget lines
+4. [`supabase-phase2-storage.sql`](supabase-phase2-storage.sql) — the private
+   receipts bucket and its access policies
 
 Every script after the first is additive and safe to re-run. On an existing
 database they move what you already have onto the new shape rather than

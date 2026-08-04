@@ -13,6 +13,9 @@ let draws = [];          // draw rows for the open project
 let activeProjectId = null;
 
 let pendingReceipts = [];
+let pendingExpenseId = null;
+let removedReceiptPaths = [];
+let receiptUrls = {};    // storage path -> signed URL, refreshed per project
 let pendingPartners = [];
 let pendingBudget = {};
 let currentUser = null;
@@ -36,9 +39,10 @@ function reportError(action, err) {
   alert("Could not " + action + ".\n\n" + (err && err.message ? err.message : err));
 }
 
-// Resize + compress an image file into a small JPEG data URL so receipts stay
-// light to store and quick to load.
-function compressImage(file, maxDim = 1200, quality = 0.65) {
+// Resize + compress an image file into a small JPEG. Storage is cheap but
+// bandwidth in the field is not, and a phone photo is 4 MB of detail nobody
+// needs to read a receipt.
+function compressImage(file, maxDim = 1600, quality = 0.7) {
   return new Promise((resolve, reject) => {
     const reader = new FileReader();
     reader.onerror = () => reject(new Error("Could not read " + file.name));
@@ -51,12 +55,27 @@ function compressImage(file, maxDim = 1200, quality = 0.65) {
         canvas.width = Math.round(img.width * scale);
         canvas.height = Math.round(img.height * scale);
         canvas.getContext("2d").drawImage(img, 0, 0, canvas.width, canvas.height);
-        resolve(canvas.toDataURL("image/jpeg", quality));
+        canvas.toBlob(
+          (blob) => (blob ? resolve(blob) : reject(new Error("Could not compress " + file.name))),
+          "image/jpeg",
+          quality
+        );
       };
       img.src = reader.result;
     };
     reader.readAsDataURL(file);
   });
+}
+
+// A data URL is an image that has not been moved to Storage yet. Turning one
+// back into a blob is what lets the migration upload it.
+function dataUrlToBlob(dataUrl) {
+  const [head, body] = dataUrl.split(",");
+  const type = (head.match(/data:([^;]+)/) || [])[1] || "image/jpeg";
+  const bin = atob(body);
+  const bytes = new Uint8Array(bin.length);
+  for (let i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i);
+  return new Blob([bytes], { type });
 }
 
 // ---------- Lookups ----------
@@ -215,11 +234,13 @@ async function route() {
       expenses = await Store.getExpenses(activeProjectId);
       draws = allDraws.filter((d) => d.projectId === activeProjectId);
       syncSummaries();
+      await refreshReceiptUrls();
     } catch (err) {
       reportError("load this project", err);
       return;
     }
     renderProject();
+    migrateLegacyReceipts();
     return;
   }
 
@@ -743,11 +764,14 @@ function rowHtml(e) {
   const badgeClass = idx % 2 === 0 ? "badge a" : "badge";
   const receipts = Array.isArray(e.receipts) ? e.receipts : [];
   const thumbs = receipts
-    .map(
-      (src, i) =>
-        '<img class="thumb" src="' + src + '" alt="Receipt ' + (i + 1) +
-        '" data-lightbox="' + src + '" />'
-    )
+    .map((entry, i) => {
+      const src = receiptSrc(entry);
+      if (!src) return "";
+      return (
+        '<img class="thumb" src="' + escapeHtml(src) + '" alt="Receipt ' + (i + 1) +
+        '" data-lightbox="' + escapeHtml(src) + '" />'
+      );
+    })
     .join("");
   const notes = e.notes ? '<div class="row-notes">' + escapeHtml(e.notes) + "</div>" : "";
   const extras =
@@ -811,7 +835,12 @@ function openModal(id) {
   document.getElementById("f-amount").value = existing ? existing.amount : "";
   document.getElementById("f-description").value = existing ? existing.description : "";
   document.getElementById("f-notes").value = existing ? existing.notes || "" : "";
-  pendingReceipts = existing && Array.isArray(existing.receipts) ? existing.receipts.slice() : [];
+  // Photos are addressed by storage path; the id has to exist before the
+  // upload so the file lands in the folder its policies expect.
+  pendingExpenseId = existing ? existing.id : Store.newId();
+  removedReceiptPaths = [];
+  pendingReceipts = (existing && Array.isArray(existing.receipts) ? existing.receipts : [])
+    .map((entry) => ({ path: entry, blob: null, url: receiptSrc(entry) }));
   renderReceiptPreviews();
 
   fillSelect(
@@ -837,25 +866,44 @@ function openModal(id) {
 
 function closeModal() {
   document.getElementById("modal").classList.add("hidden");
+  for (const r of pendingReceipts) if (r.url.startsWith("blob:")) URL.revokeObjectURL(r.url);
   pendingReceipts = [];
+  removedReceiptPaths = [];
+  pendingExpenseId = null;
 }
 
 async function saveFromForm() {
+  const id = document.getElementById("f-id").value;
+  const expenseId = id || pendingExpenseId;
+
+  // Upload first. A half-written row pointing at a photo that never arrived is
+  // worse than a failed save, so nothing touches the database until every
+  // image is in the bucket.
+  let paths;
+  try {
+    paths = [];
+    for (const r of pendingReceipts) {
+      paths.push(r.blob ? await Store.uploadReceipt(activeProjectId, expenseId, r.blob) : r.path);
+    }
+  } catch (err) {
+    reportError("upload the receipt photos", err);
+    return;
+  }
+
   const record = {
     projectId: activeProjectId,
     date: document.getElementById("f-date").value,
     amount: parseFloat(document.getElementById("f-amount").value) || 0,
     description: document.getElementById("f-description").value.trim(),
     notes: document.getElementById("f-notes").value.trim(),
-    receipts: pendingReceipts.slice(),
+    receipts: paths,
     partnerId: document.getElementById("f-partner").value,
     category: document.getElementById("f-category").value,
     costType: document.getElementById("f-costtype").value,
   };
-  const id = document.getElementById("f-id").value;
 
   try {
-    const saved = await Store.saveExpense(record, id || null);
+    const saved = await Store.saveExpense(record, expenseId);
     if (id) {
       const idx = expenses.findIndex((e) => e.id === id);
       if (idx > -1) expenses[idx] = saved;
@@ -866,6 +914,14 @@ async function saveFromForm() {
     reportError("save this expense", err); // modal stays open so nothing is lost
     return;
   }
+
+  try {
+    await Store.deleteReceipts(removedReceiptPaths);
+    Object.assign(receiptUrls, await Store.signReceipts(paths));
+  } catch (err) {
+    console.warn("Expense saved; tidying up the photos failed:", err.message);
+  }
+
   syncSummaries();
   closeModal();
   renderProject();
@@ -877,6 +933,8 @@ async function removeExpense(id) {
   if (!confirm(`Delete "${e.description}" (${money(e.amount)})?`)) return;
   try {
     await Store.deleteExpense(id);
+    // Only once the row is gone, so a failed delete never orphans the photos.
+    await Store.deleteReceipts(e.receipts);
   } catch (err) {
     reportError("delete this expense", err);
     return;
@@ -887,6 +945,63 @@ async function removeExpense(id) {
 }
 
 // ---------- Receipts ----------
+// A receipt is a storage path. Storage is private, so a path is useless on its
+// own — it has to be exchanged for a signed URL before an <img> can show it.
+// Sign the whole project in one call rather than one call per thumbnail.
+async function refreshReceiptUrls() {
+  const paths = [];
+  for (const e of expenses) for (const r of e.receipts || []) if (!isDataUrl(r)) paths.push(r);
+  receiptUrls = paths.length ? await Store.signReceipts(paths) : {};
+}
+
+function receiptSrc(entry) {
+  return isDataUrl(entry) ? entry : receiptUrls[entry] || "";
+}
+
+// Old receipts were base64 blobs inside the expense row. Move them across as
+// each project is opened: upload first, confirm the upload is readable, and
+// only then rewrite the row. If any step fails the original is left untouched.
+async function migrateLegacyReceipts() {
+  const projectId = activeProjectId;
+  if (!canEdit(projectId)) return;
+  const stale = expenses.filter((e) => (e.receipts || []).some(isDataUrl));
+  if (!stale.length) return;
+
+  let moved = 0;
+  for (const e of stale) {
+    if (activeProjectId !== projectId) return; // user navigated away
+    const next = [];
+    let changed = false;
+    for (const entry of e.receipts) {
+      if (!isDataUrl(entry)) {
+        next.push(entry);
+        continue;
+      }
+      try {
+        const path = await Store.uploadReceipt(projectId, e.id, dataUrlToBlob(entry));
+        const signed = await Store.signReceipts([path]);
+        if (!signed[path]) throw new Error("uploaded receipt was not readable");
+        receiptUrls[path] = signed[path];
+        next.push(path);
+        changed = true;
+        moved++;
+      } catch (err) {
+        console.warn("Leaving a receipt in the database for now:", err.message);
+        next.push(entry);
+      }
+    }
+    if (!changed) continue;
+    try {
+      const saved = await Store.saveExpense({ ...e, receipts: next }, e.id);
+      const i = expenses.findIndex((x) => x.id === e.id);
+      if (i > -1) expenses[i] = saved;
+    } catch (err) {
+      console.warn("Could not rewrite the expense, receipts stay as they were:", err.message);
+    }
+  }
+  if (moved && activeProjectId === projectId) renderGroups();
+}
+
 function renderReceiptPreviews() {
   const el = document.getElementById("receipt-previews");
   if (!pendingReceipts.length) {
@@ -895,16 +1010,21 @@ function renderReceiptPreviews() {
   }
   el.innerHTML = pendingReceipts
     .map(
-      (src, i) =>
+      (r, i) =>
         '<div class="preview">' +
-        '<img src="' + src + '" alt="Receipt ' + (i + 1) + '" data-lightbox="' + src + '" />' +
+        '<img src="' + escapeHtml(r.url) + '" alt="Receipt ' + (i + 1) +
+        '" data-lightbox="' + escapeHtml(r.url) + '" />' +
         '<button type="button" class="remove-receipt" data-remove="' + i + '" title="Remove">&times;</button>' +
         "</div>"
     )
     .join("");
   el.querySelectorAll("[data-remove]").forEach((b) =>
     b.addEventListener("click", () => {
-      pendingReceipts.splice(Number(b.dataset.remove), 1);
+      const [gone] = pendingReceipts.splice(Number(b.dataset.remove), 1);
+      // Deleted from storage only after the expense saves, so cancelling out
+      // of the form cannot destroy a photo.
+      if (gone && gone.path) removedReceiptPaths.push(gone.path);
+      if (gone && gone.url.startsWith("blob:")) URL.revokeObjectURL(gone.url);
       renderReceiptPreviews();
     })
   );
@@ -917,7 +1037,8 @@ async function handleReceiptFiles(fileList) {
   const files = Array.from(fileList).filter((f) => f.type.startsWith("image/"));
   for (const file of files) {
     try {
-      pendingReceipts.push(await compressImage(file));
+      const blob = await compressImage(file);
+      pendingReceipts.push({ path: null, blob, url: URL.createObjectURL(blob) });
     } catch (err) {
       alert(err.message);
     }
@@ -1009,6 +1130,184 @@ async function removeDraw(id) {
   draws = draws.filter((x) => x.id !== id);
   allDraws = allDraws.filter((x) => x.id !== id);
   renderProject();
+}
+
+// ===========================================================================
+// LENDER DRAW REQUEST
+//
+// A draw request is an invoice to the lender: here is the work we paid for
+// since the last draw, here are the receipts, please release the money. The
+// slowest part of a rehab is usually waiting on that, so the app builds it
+// rather than making you retype the ledger into a spreadsheet.
+// ===========================================================================
+let drawReqSelection = new Set();
+
+// Anything filed under the construction bucket, spent after the last draw was
+// taken. Holding costs and closing fees are excluded: a construction lender
+// reimburses work, not insurance.
+function drawRequestCandidates() {
+  const last = draws
+    .map((d) => d.date)
+    .filter(Boolean)
+    .sort()
+    .pop();
+  return expenses
+    .filter((e) => categoryGroup(e.category) === "build")
+    .filter((e) => !last || !e.date || e.date > last)
+    .sort((a, b) => String(a.date).localeCompare(String(b.date)));
+}
+
+function openDrawRequest() {
+  const p = activeProject();
+  if (!p) return;
+  const list = drawRequestCandidates();
+  if (!list.length) {
+    alert("Nothing to request yet — no work has been paid for since your last draw.");
+    return;
+  }
+
+  drawReqSelection = new Set(list.map((e) => e.id));
+  document.getElementById("dr-number").value = draws.length + 1;
+  document.getElementById("dr-date").value = new Date().toISOString().slice(0, 10);
+  document.getElementById("dr-all").checked = true;
+
+  document.getElementById("drawreq-picker").innerHTML = list
+    .map(
+      (e) =>
+        '<label class="drawreq-row">' +
+        '<input type="checkbox" data-dr="' + escapeHtml(e.id) + '" checked />' +
+        '<span class="dr-date">' + escapeHtml(e.date || "—") + "</span>" +
+        '<span class="dr-desc">' + escapeHtml(e.description) +
+        '<em>' + escapeHtml(e.category) + " · " + escapeHtml(e.costType) +
+        ((e.receipts || []).length ? " · " + e.receipts.length + " receipt" +
+          (e.receipts.length === 1 ? "" : "s") : " · no receipt") +
+        "</em></span>" +
+        '<span class="dr-amount">' + money(e.amount) + "</span>" +
+        "</label>"
+    )
+    .join("");
+
+  document.getElementById("drawreq-picker")
+    .querySelectorAll("[data-dr]")
+    .forEach((cb) =>
+      cb.addEventListener("change", () => {
+        if (cb.checked) drawReqSelection.add(cb.dataset.dr);
+        else drawReqSelection.delete(cb.dataset.dr);
+        updateDrawRequestTotal();
+      })
+    );
+
+  updateDrawRequestTotal();
+  document.getElementById("drawreq-modal").classList.remove("hidden");
+}
+
+function updateDrawRequestTotal() {
+  const p = activeProject();
+  const picked = expenses.filter((e) => drawReqSelection.has(e.id));
+  const total = sum(picked);
+  document.getElementById("dr-total").textContent = money(total);
+
+  const { remaining } = loanNumbers(p, draws);
+  const missing = picked.filter((e) => !(e.receipts || []).length).length;
+  const notes = [];
+  if (total > remaining) {
+    notes.push(
+      "This is more than the " + money(remaining) +
+      " left in the holdback. The lender will not fund the difference."
+    );
+  }
+  if (missing) {
+    notes.push(missing + " line" + (missing === 1 ? " has" : "s have") +
+      " no receipt attached, which is the usual reason a draw gets held up.");
+  }
+  document.getElementById("dr-warning").textContent = notes.join(" ");
+}
+
+function closeDrawRequest() {
+  document.getElementById("drawreq-modal").classList.add("hidden");
+}
+
+// The document is built into a hidden element and revealed by the print
+// stylesheet, so what you see in the print preview is the whole page and
+// nothing else — no app chrome, no buttons.
+function printDrawRequest() {
+  const p = activeProject();
+  const picked = expenses.filter((e) => drawReqSelection.has(e.id));
+  if (!picked.length) {
+    alert("Tick at least one line to request.");
+    return;
+  }
+  const total = sum(picked);
+  const { funded, totalDraws, remaining } = loanNumbers(p, draws);
+  const number = document.getElementById("dr-number").value || draws.length + 1;
+  const date = document.getElementById("dr-date").value || new Date().toISOString().slice(0, 10);
+
+  const byCategory = {};
+  for (const e of picked) (byCategory[e.category] = byCategory[e.category] || []).push(e);
+
+  const field = (label, value) =>
+    '<div class="dq-field"><span>' + escapeHtml(label) + "</span><strong>" +
+    escapeHtml(value || "—") + "</strong></div>";
+
+  document.getElementById("drawreq-doc").innerHTML =
+    '<div class="dq-head">' +
+    "<h1>Construction Draw Request</h1>" +
+    '<div class="dq-number">Draw #' + escapeHtml(String(number)) + " · " + escapeHtml(date) + "</div>" +
+    "</div>" +
+    '<div class="dq-fields">' +
+    field("Property", p.address || p.name) +
+    field("Borrower", p.borrower) +
+    field("Lender", p.lender) +
+    field("Settlement date", p.settlementDate) +
+    "</div>" +
+    '<div class="dq-fields">' +
+    field("Loan amount", money(p.loanAmount)) +
+    field("Funded at closing", money(funded)) +
+    field("Draws taken to date", money(totalDraws)) +
+    field("Holdback remaining", money(remaining)) +
+    "</div>" +
+    "<h2>Work completed and paid</h2>" +
+    '<table class="dq-table"><thead><tr>' +
+    "<th>Date</th><th>Description</th><th>Cost type</th><th>Paid by</th>" +
+    '<th class="amount">Amount</th><th>Receipt</th>' +
+    "</tr></thead><tbody>" +
+    Object.keys(byCategory)
+      .map(
+        (cat) =>
+          '<tr class="dq-cat"><td colspan="6">' + escapeHtml(cat) + "</td></tr>" +
+          byCategory[cat]
+            .map(
+              (e) =>
+                "<tr>" +
+                "<td>" + escapeHtml(e.date || "—") + "</td>" +
+                "<td>" + escapeHtml(e.description) +
+                (e.notes ? '<em class="dq-note">' + escapeHtml(e.notes) + "</em>" : "") + "</td>" +
+                "<td>" + escapeHtml(e.costType) + "</td>" +
+                "<td>" + escapeHtml(partnerName(e.partnerId)) + "</td>" +
+                '<td class="amount">' + money(e.amount) + "</td>" +
+                "<td>" + ((e.receipts || []).length ? "Attached" : "—") + "</td>" +
+                "</tr>"
+            )
+            .join("") +
+          '<tr class="dq-subtotal"><td colspan="4">' + escapeHtml(cat) + " subtotal</td>" +
+          '<td class="amount">' + money(sum(byCategory[cat])) + "</td><td></td></tr>"
+      )
+      .join("") +
+    "</tbody><tfoot><tr>" +
+    '<td colspan="4">Total requested</td>' +
+    '<td class="amount">' + money(total) + "</td><td></td>" +
+    "</tr></tfoot></table>" +
+    '<p class="dq-cert">The undersigned certifies that the costs listed above have been ' +
+    "incurred and paid in connection with the property described, and that this request " +
+    "does not include any amount for which a previous draw has been received.</p>" +
+    '<div class="dq-sign">' +
+    '<div class="dq-sign-line"><span></span>Borrower signature</div>' +
+    '<div class="dq-sign-line"><span></span>Date</div>' +
+    "</div>";
+
+  document.body.classList.add("printing-draw");
+  window.print();
+  document.body.classList.remove("printing-draw");
 }
 
 // ===========================================================================
@@ -1186,6 +1485,11 @@ async function deleteActiveProject() {
   }
   try {
     await Store.deleteProject(id);
+    // The database cascades, Storage does not, so the photos have to be
+    // swept up by hand or they sit in the bucket forever.
+    if (id === activeProjectId) {
+      await Store.deleteReceipts(expenses.flatMap((e) => e.receipts || []));
+    }
   } catch (err) {
     reportError("delete this project", err);
     return;
@@ -1399,6 +1703,22 @@ document.getElementById("settings-btn").addEventListener("click", () => openProj
 document.getElementById("share-btn").addEventListener("click", openShareModal);
 document.getElementById("budget-btn").addEventListener("click", openBudgetModal);
 document.getElementById("bg-cancel").addEventListener("click", closeBudgetModal);
+document.getElementById("draw-request-btn").addEventListener("click", openDrawRequest);
+document.getElementById("dr-cancel").addEventListener("click", closeDrawRequest);
+document.getElementById("dr-print").addEventListener("click", printDrawRequest);
+document.getElementById("drawreq-modal").addEventListener("click", (e) => {
+  if (e.target.id === "drawreq-modal") closeDrawRequest();
+});
+document.getElementById("dr-all").addEventListener("change", (ev) => {
+  document.getElementById("drawreq-picker")
+    .querySelectorAll("[data-dr]")
+    .forEach((cb) => {
+      cb.checked = ev.target.checked;
+      if (cb.checked) drawReqSelection.add(cb.dataset.dr);
+      else drawReqSelection.delete(cb.dataset.dr);
+    });
+  updateDrawRequestTotal();
+});
 document.getElementById("budget-form").addEventListener("submit", (ev) => {
   ev.preventDefault();
   saveBudgetFromForm();
@@ -1496,6 +1816,7 @@ document.addEventListener("keydown", (e) => {
   closeDrawModal();
   closeProjectModal();
   closeBudgetModal();
+  closeDrawRequest();
   document.getElementById("share-modal").classList.add("hidden");
 });
 

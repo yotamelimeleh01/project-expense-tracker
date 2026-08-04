@@ -119,6 +119,12 @@ const Store = {
     if (error) throw error;
   },
 
+  // Ids are generated here so a receipt can be filed under its expense before
+  // that expense exists in the database.
+  newId() {
+    return newId();
+  },
+
   // ---------- Partners (whose money is in the deal) ----------
   async getPartners() {
     const rows = await this.select("project_partners", "*", (q) =>
@@ -215,6 +221,51 @@ const Store = {
   async deleteBudgetLine(id) {
     await this.requireSession();
     const { error } = await this.client.from("budget_lines").delete().eq("id", id);
+    if (error) throw error;
+  },
+
+  // ---------- Receipt photos ----------
+  // Photos live in a private Storage bucket under "<projectId>/<expenseId>/".
+  // The first folder is what the storage policies read to decide who may look,
+  // so the path is not cosmetic — never build one by hand.
+  receiptPath(projectId, expenseId, ext) {
+    const rand = Math.random().toString(36).slice(2, 10);
+    return `${projectId}/${expenseId || "loose"}/${Date.now().toString(36)}${rand}.${ext || "jpg"}`;
+  },
+
+  async uploadReceipt(projectId, expenseId, blob) {
+    await this.requireSession();
+    const ext = (blob.type || "image/jpeg").split("/")[1].replace("jpeg", "jpg");
+    const path = this.receiptPath(projectId, expenseId, ext);
+    const { error } = await this.client.storage
+      .from("receipts")
+      .upload(path, blob, { contentType: blob.type || "image/jpeg", upsert: false });
+    if (error) throw error;
+    return path;
+  },
+
+  // Nothing in the bucket is publicly readable, so every image needs a signed
+  // URL. One round trip for the whole project rather than one per photo.
+  async signReceipts(paths, seconds = 3600) {
+    const list = paths.filter((p) => p && !isDataUrl(p));
+    if (!list.length) return {};
+    await this.requireSession();
+    const { data, error } = await this.client.storage
+      .from("receipts")
+      .createSignedUrls(list, seconds);
+    if (error) throw error;
+    const out = {};
+    for (const row of data || []) {
+      if (row.signedUrl && !row.error) out[row.path] = row.signedUrl;
+    }
+    return out;
+  },
+
+  async deleteReceipts(paths) {
+    const list = (paths || []).filter((p) => p && !isDataUrl(p));
+    if (!list.length) return;
+    await this.requireSession();
+    const { error } = await this.client.storage.from("receipts").remove(list);
     if (error) throw error;
   },
 
@@ -337,6 +388,12 @@ function budgetFromRow(r) {
     amount: Number(r.amount) || 0,
     notes: r.notes || "",
   };
+}
+
+// A receipt entry is either a storage path or an old base64 image still
+// waiting to be moved. Everything that touches receipts has to know which.
+function isDataUrl(s) {
+  return typeof s === "string" && s.startsWith("data:");
 }
 
 function expenseToRow(e, id) {

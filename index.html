@@ -147,7 +147,10 @@
         <p class="loan-note" id="loan-holdback-note"></p>
         <div class="loan-draws-head">
           <h3>Construction Draws</h3>
-          <button id="add-draw-btn" class="btn btn-primary">+ Add Draw</button>
+          <div class="loan-draw-actions">
+            <button id="draw-request-btn" class="btn">Draw Request</button>
+            <button id="add-draw-btn" class="btn btn-primary">+ Add Draw</button>
+          </div>
         </div>
         <div id="draws-table"></div>
       </section>
@@ -383,6 +386,42 @@
       </form>
     </div>
   </div>
+
+  <!-- Lender draw request -->
+  <div id="drawreq-modal" class="modal-overlay hidden">
+    <div class="modal modal-lg">
+      <h2>Lender Draw Request</h2>
+      <p class="modal-hint">
+        Everything spent on the work since your last draw is ticked. Untick anything
+        the lender will not reimburse, then print it or save it as a PDF.
+      </p>
+      <div class="drawreq-controls">
+        <label>Draw number
+          <input type="number" id="dr-number" min="1" step="1" />
+        </label>
+        <label>Request date
+          <input type="date" id="dr-date" />
+        </label>
+        <label class="drawreq-select-all">
+          <input type="checkbox" id="dr-all" checked /> Select all
+        </label>
+      </div>
+      <div id="drawreq-picker" class="drawreq-picker"></div>
+      <div class="drawreq-total">
+        <span>Amount requested</span>
+        <strong id="dr-total">$0.00</strong>
+      </div>
+      <p class="form-hint" id="dr-warning"></p>
+      <div class="modal-actions">
+        <button type="button" id="dr-cancel" class="btn">Close</button>
+        <button type="button" id="dr-print" class="btn btn-primary">Print / Save as PDF</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Printed output for the draw request. Hidden on screen, the only thing
+       visible on paper once body.printing-draw is set. -->
+  <div id="drawreq-doc" class="drawreq-doc" aria-hidden="true"></div>
 
   <!-- Receipt image viewer -->
   <div id="lightbox" class="modal-overlay hidden">
