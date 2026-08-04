@@ -38,8 +38,11 @@
         <div class="portfolio-stats" id="portfolio-stats"></div>
       </section>
 
+      <div id="compliance-alert" class="compliance-alert hidden"></div>
+
       <section class="toolbar">
         <button id="new-project-btn" class="btn btn-primary">+ New Project</button>
+        <button id="contractors-btn" class="btn">Contractors</button>
         <div class="spacer"></div>
         <label class="group-label">Show
           <select id="status-filter">
@@ -199,6 +202,9 @@
           </label>
           <label>Cost Type
             <select id="f-costtype"></select>
+          </label>
+          <label id="f-contractor-field">Paid To (contractor)
+            <select id="f-contractor"></select>
           </label>
           <label class="full">Notes / What's in this expense
             <textarea id="f-notes" rows="3" placeholder="e.g. 2x sheets drywall, 4 gal paint, screws &amp; caulk"></textarea>
@@ -422,6 +428,99 @@
   <!-- Printed output for the draw request. Hidden on screen, the only thing
        visible on paper once body.printing-draw is set. -->
   <div id="drawreq-doc" class="drawreq-doc" aria-hidden="true"></div>
+
+  <!-- Contractor directory and 1099s -->
+  <div id="contractor-modal" class="modal-overlay hidden">
+    <div class="modal modal-lg">
+      <h2>Contractors</h2>
+      <div class="tabs" role="tablist">
+        <button class="tab active" data-tab="directory">Directory</button>
+        <button class="tab" data-tab="tax">1099s</button>
+      </div>
+
+      <div id="tab-directory" class="tab-panel">
+        <div class="tab-toolbar">
+          <button id="add-contractor-btn" class="btn btn-primary">+ Add Contractor</button>
+          <span class="form-hint" id="directory-summary"></span>
+        </div>
+        <div id="contractor-list"></div>
+      </div>
+
+      <div id="tab-tax" class="tab-panel hidden">
+        <div class="tab-toolbar">
+          <label class="group-label">Tax year
+            <select id="tax-year"></select>
+          </label>
+          <div class="spacer"></div>
+          <button id="tax-export-btn" class="btn">Export CSV</button>
+        </div>
+        <div id="tax-list"></div>
+        <p class="form-hint" id="tax-note"></p>
+      </div>
+
+      <div class="modal-actions">
+        <button type="button" id="contractor-close" class="btn">Close</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Add / edit one contractor -->
+  <div id="contractor-edit-modal" class="modal-overlay hidden">
+    <div class="modal">
+      <h2 id="contractor-edit-title">Add Contractor</h2>
+      <form id="contractor-form">
+        <input type="hidden" id="c-id" />
+        <div class="form-grid">
+          <label>Name
+            <input type="text" id="c-name" required placeholder="Carlos Rivera" />
+          </label>
+          <label>Company
+            <input type="text" id="c-company" placeholder="Rivera Drywall LLC" />
+          </label>
+          <label>Trade
+            <input type="text" id="c-trade" placeholder="Drywall" />
+          </label>
+          <label>Phone
+            <input type="tel" id="c-phone" />
+          </label>
+          <label class="full">Email
+            <input type="email" id="c-email" />
+          </label>
+
+          <div class="form-section full">Compliance</div>
+          <label>Insurance (COI) expires
+            <input type="date" id="c-coi" />
+          </label>
+          <label>Licence expires
+            <input type="date" id="c-license-exp" />
+          </label>
+          <label>Licence number
+            <input type="text" id="c-license" />
+          </label>
+          <label class="checkbox-field">
+            <input type="checkbox" id="c-w9" /> W-9 on file
+          </label>
+          <label>Tax ID last 4
+            <input type="text" id="c-taxid" maxlength="4" inputmode="numeric" placeholder="1234" />
+          </label>
+          <p class="form-hint full">
+            Only the last four digits are kept. Never type a full SSN or EIN in here —
+            keep the W-9 itself somewhere built to hold it.
+          </p>
+
+          <label class="full">Notes
+            <textarea id="c-notes" rows="2"></textarea>
+          </label>
+        </div>
+        <div class="modal-actions">
+          <button type="button" id="c-delete" class="btn btn-danger">Delete</button>
+          <div class="spacer"></div>
+          <button type="button" id="c-cancel" class="btn">Cancel</button>
+          <button type="submit" class="btn btn-primary">Save</button>
+        </div>
+      </form>
+    </div>
+  </div>
 
   <!-- Receipt image viewer -->
   <div id="lightbox" class="modal-overlay hidden">

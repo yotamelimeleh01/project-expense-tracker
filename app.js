@@ -4,6 +4,7 @@
 let projects = [];
 let partners = [];       // partner rows for every project you can see
 let memberships = [];    // your access + everyone else's, per project
+let contractors = [];    // your directory of people you pay
 let budgets = [];        // budget lines for every project you can see
 let summaries = [];      // lightweight expense rows for every project
 let allDraws = [];       // draw rows for every project
@@ -367,6 +368,7 @@ function renderDashboard() {
 
   document.getElementById("project-grid").innerHTML = cards;
   document.getElementById("dashboard-empty").classList.toggle("hidden", projects.length > 0);
+  renderComplianceAlert();
 
   document.querySelectorAll("[data-open]").forEach((b) =>
     b.addEventListener("click", () => goProject(b.dataset.open))
@@ -774,9 +776,13 @@ function rowHtml(e) {
     })
     .join("");
   const notes = e.notes ? '<div class="row-notes">' + escapeHtml(e.notes) + "</div>" : "";
+  const who = e.contractorId && contractorName(e.contractorId)
+    ? '<div class="row-contractor">Paid to ' + escapeHtml(contractorName(e.contractorId)) + "</div>"
+    : "";
   const extras =
-    notes || thumbs
-      ? '<div class="row-extras">' + notes + (thumbs ? '<div class="thumbs">' + thumbs + "</div>" : "") + "</div>"
+    notes || who || thumbs
+      ? '<div class="row-extras">' + notes + who +
+        (thumbs ? '<div class="thumbs">' + thumbs + "</div>" : "") + "</div>"
       : "";
   return `
     <tr>
@@ -855,6 +861,14 @@ function openModal(id) {
     COST_TYPES.map((c) => ({ value: c.value, label: c.label })),
     existing ? existing.costType : defaultCostTypeFor("General Construction")
   );
+  fillSelect(
+    document.getElementById("f-contractor"),
+    [{ value: "", label: "— not tracked —" }].concat(
+      contractors.map((c) => ({ value: c.id, label: c.company ? c.name + " (" + c.company + ")" : c.name }))
+    ),
+    existing ? existing.contractorId || "" : ""
+  );
+  syncContractorField();
 
   document.getElementById("modal").classList.remove("hidden");
   document.getElementById("f-description").focus();
@@ -862,6 +876,14 @@ function openModal(id) {
     ev.preventDefault();
     saveFromForm();
   };
+}
+
+// Naming who was paid only matters for the spend that ends up on a 1099.
+// Asking for a contractor against a load of tile would just be noise.
+function syncContractorField() {
+  const relevant = is1099CostType(document.getElementById("f-costtype").value);
+  document.getElementById("f-contractor-field").classList.toggle("hidden", !relevant);
+  if (!relevant) document.getElementById("f-contractor").value = "";
 }
 
 function closeModal() {
@@ -900,6 +922,7 @@ async function saveFromForm() {
     partnerId: document.getElementById("f-partner").value,
     category: document.getElementById("f-category").value,
     costType: document.getElementById("f-costtype").value,
+    contractorId: document.getElementById("f-contractor").value || null,
   };
 
   try {
@@ -1281,7 +1304,10 @@ function printDrawRequest() {
                 "<tr>" +
                 "<td>" + escapeHtml(e.date || "—") + "</td>" +
                 "<td>" + escapeHtml(e.description) +
-                (e.notes ? '<em class="dq-note">' + escapeHtml(e.notes) + "</em>" : "") + "</td>" +
+                (e.notes ? '<em class="dq-note">' + escapeHtml(e.notes) + "</em>" : "") +
+                (contractorName(e.contractorId)
+                  ? '<em class="dq-note">Paid to ' + escapeHtml(contractorName(e.contractorId)) + "</em>"
+                  : "") + "</td>" +
                 "<td>" + escapeHtml(e.costType) + "</td>" +
                 "<td>" + escapeHtml(partnerName(e.partnerId)) + "</td>" +
                 '<td class="amount">' + money(e.amount) + "</td>" +
@@ -1308,6 +1334,345 @@ function printDrawRequest() {
   document.body.classList.add("printing-draw");
   window.print();
   document.body.classList.remove("printing-draw");
+}
+
+// ===========================================================================
+// CONTRACTORS, COMPLIANCE AND 1099s
+//
+// The directory is deliberately not per project. The same tile setter works on
+// three of your deals, his insurance either lapses or it does not, and at year
+// end the IRS wants one number per person across everything you paid them.
+// ===========================================================================
+function contractorById(id) {
+  return contractors.find((c) => c.id === id) || null;
+}
+
+function contractorName(id) {
+  const c = contractorById(id);
+  return c ? c.company || c.name : "";
+}
+
+// The worst of the two dates is what the contractor is judged on: current
+// insurance is no help if the licence lapsed last month.
+function complianceOf(c) {
+  const coi = expiryState(c.coiExpires);
+  const lic = expiryState(c.licenseExpires);
+  const rank = { expired: 3, soon: 2, none: 1, ok: 0 };
+  return rank[coi.key] >= rank[lic.key] ? coi : lic;
+}
+
+function contractorsNeedingAttention() {
+  return contractors
+    .map((c) => ({ contractor: c, state: complianceOf(c) }))
+    .filter((x) => x.state.key === "expired" || x.state.key === "soon");
+}
+
+function renderComplianceAlert() {
+  const el = document.getElementById("compliance-alert");
+  const flagged = contractorsNeedingAttention();
+  if (!flagged.length) {
+    el.classList.add("hidden");
+    el.innerHTML = "";
+    return;
+  }
+  const expired = flagged.filter((x) => x.state.key === "expired");
+  const soon = flagged.filter((x) => x.state.key === "soon");
+  const parts = [];
+  if (expired.length) {
+    parts.push(
+      "<strong>" + expired.length + " contractor" + (expired.length === 1 ? " has" : "s have") +
+      " expired paperwork:</strong> " +
+      expired.map((x) => escapeHtml(x.contractor.name)).join(", ")
+    );
+  }
+  if (soon.length) {
+    parts.push(
+      soon.length + " expiring within " + EXPIRY_WARNING_DAYS + " days: " +
+      soon.map((x) => escapeHtml(x.contractor.name)).join(", ")
+    );
+  }
+  el.className = "compliance-alert " + (expired.length ? "alert-expired" : "alert-soon");
+  el.innerHTML =
+    '<div class="alert-body">' + parts.join(" &nbsp;·&nbsp; ") + "</div>" +
+    '<button class="btn btn-small" id="alert-open">Review</button>';
+  document.getElementById("alert-open").addEventListener("click", () => openContractorModal("directory"));
+}
+
+// ---------- Directory ----------
+function openContractorModal(tab) {
+  showContractorTab(tab || "directory");
+  renderContractorList();
+  fillTaxYears();
+  renderTaxList();
+  document.getElementById("contractor-modal").classList.remove("hidden");
+}
+
+function closeContractorModal() {
+  document.getElementById("contractor-modal").classList.add("hidden");
+}
+
+function showContractorTab(name) {
+  document.querySelectorAll("#contractor-modal .tab").forEach((t) =>
+    t.classList.toggle("active", t.dataset.tab === name)
+  );
+  document.getElementById("tab-directory").classList.toggle("hidden", name !== "directory");
+  document.getElementById("tab-tax").classList.toggle("hidden", name !== "tax");
+}
+
+function renderContractorList() {
+  const el = document.getElementById("contractor-list");
+  if (!contractors.length) {
+    el.innerHTML =
+      '<p class="empty">No contractors yet. Add the people you pay and the app will ' +
+      "watch their insurance dates and total up their 1099s for you.</p>";
+    document.getElementById("directory-summary").textContent = "";
+    return;
+  }
+
+  const paid = {};
+  for (const e of summaries) {
+    if (e.contractorId) paid[e.contractorId] = (paid[e.contractorId] || 0) + (Number(e.amount) || 0);
+  }
+
+  el.innerHTML = contractors
+    .map((c) => {
+      const state = complianceOf(c);
+      const dates = [
+        c.coiExpires ? "COI " + c.coiExpires : "",
+        c.licenseExpires ? "Licence " + c.licenseExpires : "",
+      ].filter(Boolean).join(" · ");
+      return (
+        '<div class="contractor-row" data-contractor="' + escapeHtml(c.id) + '">' +
+        '<div class="cr-main">' +
+        '<div class="cr-name">' + escapeHtml(c.name) +
+        (c.company ? ' <span class="cr-company">' + escapeHtml(c.company) + "</span>" : "") +
+        "</div>" +
+        '<div class="cr-sub">' +
+        [c.trade, c.phone, c.email].filter(Boolean).map(escapeHtml).join(" · ") +
+        (dates ? '<span class="cr-dates">' + escapeHtml(dates) + "</span>" : "") +
+        "</div>" +
+        "</div>" +
+        '<div class="cr-side">' +
+        '<span class="cr-paid">' + money(paid[c.id] || 0) + "</span>" +
+        '<span class="compliance compliance-' + state.key + '">' + escapeHtml(state.label) + "</span>" +
+        (c.w9OnFile ? '<span class="w9 yes">W-9</span>' : '<span class="w9 no">No W-9</span>') +
+        "</div>" +
+        "</div>"
+      );
+    })
+    .join("");
+
+  el.querySelectorAll("[data-contractor]").forEach((row) =>
+    row.addEventListener("click", () => openContractorEdit(row.dataset.contractor))
+  );
+
+  const flagged = contractorsNeedingAttention().length;
+  document.getElementById("directory-summary").textContent =
+    contractors.length + " contractor" + (contractors.length === 1 ? "" : "s") +
+    (flagged ? " · " + flagged + " need paperwork" : " · all paperwork current");
+}
+
+function openContractorEdit(id) {
+  const c = id ? contractorById(id) : null;
+  document.getElementById("contractor-edit-title").textContent =
+    c ? "Edit Contractor" : "Add Contractor";
+  document.getElementById("c-id").value = c ? c.id : "";
+  document.getElementById("c-name").value = c ? c.name : "";
+  document.getElementById("c-company").value = c ? c.company : "";
+  document.getElementById("c-trade").value = c ? c.trade : "";
+  document.getElementById("c-phone").value = c ? c.phone : "";
+  document.getElementById("c-email").value = c ? c.email : "";
+  document.getElementById("c-coi").value = c ? c.coiExpires : "";
+  document.getElementById("c-license-exp").value = c ? c.licenseExpires : "";
+  document.getElementById("c-license").value = c ? c.licenseNumber : "";
+  document.getElementById("c-w9").checked = c ? c.w9OnFile : false;
+  document.getElementById("c-taxid").value = c ? c.taxIdLast4 : "";
+  document.getElementById("c-notes").value = c ? c.notes : "";
+  document.getElementById("c-delete").classList.toggle("hidden", !c);
+  document.getElementById("contractor-edit-modal").classList.remove("hidden");
+  document.getElementById("c-name").focus();
+}
+
+function closeContractorEdit() {
+  document.getElementById("contractor-edit-modal").classList.add("hidden");
+}
+
+async function saveContractorFromForm() {
+  const id = document.getElementById("c-id").value;
+  const record = {
+    name: document.getElementById("c-name").value.trim(),
+    company: document.getElementById("c-company").value.trim(),
+    trade: document.getElementById("c-trade").value.trim(),
+    phone: document.getElementById("c-phone").value.trim(),
+    email: document.getElementById("c-email").value.trim(),
+    coiExpires: document.getElementById("c-coi").value || null,
+    licenseExpires: document.getElementById("c-license-exp").value || null,
+    licenseNumber: document.getElementById("c-license").value.trim(),
+    w9OnFile: document.getElementById("c-w9").checked,
+    taxIdLast4: document.getElementById("c-taxid").value.replace(/\D/g, "").slice(-4),
+    notes: document.getElementById("c-notes").value.trim(),
+  };
+  if (!record.name) return;
+
+  try {
+    const saved = await Store.saveContractor(record, id || null);
+    const i = contractors.findIndex((c) => c.id === saved.id);
+    if (i > -1) contractors[i] = saved;
+    else contractors.push(saved);
+    contractors.sort((a, b) => a.name.localeCompare(b.name));
+  } catch (err) {
+    reportError("save this contractor", err);
+    return;
+  }
+  closeContractorEdit();
+  renderContractorList();
+  renderTaxList();
+  renderComplianceAlert();
+}
+
+async function deleteContractorFromForm() {
+  const id = document.getElementById("c-id").value;
+  const c = contractorById(id);
+  if (!c) return;
+  const used = summaries.filter((e) => e.contractorId === id).length;
+  if (
+    !confirm(
+      "Delete " + c.name + "?" +
+      (used
+        ? "\n\n" + used + " expense" + (used === 1 ? "" : "s") +
+          " will stay exactly as they are, but will no longer say who was paid."
+        : "")
+    )
+  ) {
+    return;
+  }
+  try {
+    await Store.deleteContractor(id);
+  } catch (err) {
+    reportError("delete this contractor", err);
+    return;
+  }
+  contractors = contractors.filter((x) => x.id !== id);
+  for (const e of summaries) if (e.contractorId === id) e.contractorId = null;
+  for (const e of expenses) if (e.contractorId === id) e.contractorId = null;
+  closeContractorEdit();
+  renderContractorList();
+  renderTaxList();
+  renderComplianceAlert();
+}
+
+// ---------- 1099s ----------
+// Every project you can see, one calendar year, labour and services only.
+// Materials are not reportable, which is exactly why cost type is a separate
+// field from category.
+function taxYears() {
+  const years = new Set(
+    summaries.map((e) => String(e.date || "").slice(0, 4)).filter((y) => /^\d{4}$/.test(y))
+  );
+  years.add(String(new Date().getFullYear()));
+  return [...years].sort().reverse();
+}
+
+function fillTaxYears() {
+  const sel = document.getElementById("tax-year");
+  const current = sel.value;
+  const years = taxYears();
+  sel.innerHTML = years.map((y) => '<option value="' + y + '">' + y + "</option>").join("");
+  sel.value = years.includes(current) ? current : years[0];
+}
+
+function taxRows(year) {
+  const totals = {};
+  for (const e of summaries) {
+    if (!e.contractorId || !is1099CostType(e.costType)) continue;
+    if (String(e.date || "").slice(0, 4) !== String(year)) continue;
+    const t = (totals[e.contractorId] = totals[e.contractorId] || { paid: 0, lines: 0 });
+    t.paid += Number(e.amount) || 0;
+    t.lines++;
+  }
+  return Object.keys(totals)
+    .map((id) => {
+      const c = contractorById(id);
+      return {
+        id,
+        name: c ? c.name : "Unknown contractor",
+        company: c ? c.company : "",
+        w9OnFile: c ? c.w9OnFile : false,
+        taxIdLast4: c ? c.taxIdLast4 : "",
+        paid: totals[id].paid,
+        lines: totals[id].lines,
+        reportable: totals[id].paid >= IRS_1099_THRESHOLD,
+      };
+    })
+    .sort((a, b) => b.paid - a.paid);
+}
+
+function renderTaxList() {
+  const year = document.getElementById("tax-year").value;
+  const rows = taxRows(year);
+  const el = document.getElementById("tax-list");
+
+  if (!rows.length) {
+    el.innerHTML =
+      '<p class="empty">Nothing reportable in ' + escapeHtml(String(year)) +
+      ". Tag labour and service expenses with a contractor and they will total up here.</p>";
+    document.getElementById("tax-note").textContent = "";
+    return;
+  }
+
+  el.innerHTML =
+    '<table class="tax-table"><thead><tr>' +
+    "<th>Contractor</th><th>Payments</th>" +
+    '<th class="amount">Paid in ' + escapeHtml(String(year)) + "</th>" +
+    "<th>W-9</th><th>1099 needed</th>" +
+    "</tr></thead><tbody>" +
+    rows
+      .map(
+        (r) =>
+          "<tr>" +
+          "<td><strong>" + escapeHtml(r.name) + "</strong>" +
+          (r.company ? '<em class="tax-company">' + escapeHtml(r.company) + "</em>" : "") +
+          (r.taxIdLast4 ? '<em class="tax-company">ID ending ' + escapeHtml(r.taxIdLast4) + "</em>" : "") +
+          "</td>" +
+          "<td>" + r.lines + "</td>" +
+          '<td class="amount">' + money(r.paid) + "</td>" +
+          '<td>' + (r.w9OnFile
+            ? '<span class="w9 yes">On file</span>'
+            : '<span class="w9 no">Missing</span>') + "</td>" +
+          "<td>" + (r.reportable
+            ? '<span class="tax-flag yes">Yes</span>'
+            : '<span class="tax-flag no">Under ' + money(IRS_1099_THRESHOLD) + "</span>") + "</td>" +
+          "</tr>"
+      )
+      .join("") +
+    "</tbody></table>";
+
+  const due = rows.filter((r) => r.reportable);
+  const missing = due.filter((r) => !r.w9OnFile);
+  document.getElementById("tax-note").textContent =
+    due.length + " contractor" + (due.length === 1 ? "" : "s") + " passed the " +
+    money(IRS_1099_THRESHOLD) + " threshold in " + year +
+    (missing.length
+      ? ". " + missing.length + " of them ha" + (missing.length === 1 ? "s" : "ve") +
+        " no W-9 on file — chase that before January."
+      : ". Every one of them has a W-9 on file.") +
+    " Corporations are usually exempt, so check before you file.";
+}
+
+function exportTaxCsv() {
+  const year = document.getElementById("tax-year").value;
+  const rows = taxRows(year);
+  const headers = ["Contractor", "Company", "Tax ID last 4", "Payments", "Paid " + year, "W-9 on file", "1099 needed"];
+  const lines = [headers.join(",")];
+  for (const r of rows) {
+    lines.push(
+      [r.name, r.company, r.taxIdLast4, r.lines, r.paid.toFixed(2), r.w9OnFile ? "Yes" : "No",
+       r.reportable ? "Yes" : "No"]
+        .map((v) => `"${String(v ?? "").replace(/"/g, '""')}"`)
+        .join(",")
+    );
+  }
+  download("1099-summary-" + year + ".csv", "text/csv", lines.join("\r\n"));
 }
 
 // ===========================================================================
@@ -1663,7 +2028,7 @@ async function renderMembers() {
 // ===========================================================================
 function exportCsv() {
   const p = activeProject();
-  const headers = ["Project", "Date", "Description", "Notes", "Category", "Cost Type", "Paid By", "Amount", "Receipts"];
+  const headers = ["Project", "Date", "Description", "Notes", "Category", "Cost Type", "Paid By", "Paid To", "Amount", "Receipts"];
   const lines = [headers.join(",")];
   for (const e of expenses) {
     const row = [
@@ -1674,6 +2039,7 @@ function exportCsv() {
       e.category,
       e.costType,
       partnerName(e.partnerId),
+      contractorName(e.contractorId),
       (Number(e.amount) || 0).toFixed(2),
       Array.isArray(e.receipts) ? e.receipts.length : 0,
     ].map((v) => `"${String(v ?? "").replace(/"/g, '""')}"`);
@@ -1732,6 +2098,26 @@ document.getElementById("budget-modal").addEventListener("click", (e) => {
 document.getElementById("f-category").addEventListener("change", (ev) => {
   if (document.getElementById("f-id").value) return;
   document.getElementById("f-costtype").value = defaultCostTypeFor(ev.target.value);
+  syncContractorField();
+});
+document.getElementById("f-costtype").addEventListener("change", syncContractorField);
+
+document.getElementById("contractors-btn").addEventListener("click", () => openContractorModal("directory"));
+document.getElementById("contractor-close").addEventListener("click", closeContractorModal);
+document.getElementById("contractor-modal").addEventListener("click", (e) => {
+  if (e.target.id === "contractor-modal") closeContractorModal();
+});
+document.querySelectorAll("#contractor-modal .tab").forEach((t) =>
+  t.addEventListener("click", () => showContractorTab(t.dataset.tab))
+);
+document.getElementById("add-contractor-btn").addEventListener("click", () => openContractorEdit(null));
+document.getElementById("tax-year").addEventListener("change", renderTaxList);
+document.getElementById("tax-export-btn").addEventListener("click", exportTaxCsv);
+document.getElementById("c-cancel").addEventListener("click", closeContractorEdit);
+document.getElementById("c-delete").addEventListener("click", deleteContractorFromForm);
+document.getElementById("contractor-form").addEventListener("submit", (ev) => {
+  ev.preventDefault();
+  saveContractorFromForm();
 });
 
 document.getElementById("p-status").addEventListener("change", async (ev) => {
@@ -1817,6 +2203,8 @@ document.addEventListener("keydown", (e) => {
   closeProjectModal();
   closeBudgetModal();
   closeDrawRequest();
+  closeContractorEdit();
+  closeContractorModal();
   document.getElementById("share-modal").classList.add("hidden");
 });
 
@@ -1902,10 +2290,11 @@ function fillStaticSelects() {
 }
 
 async function loadAll() {
-  [projects, partners, memberships, budgets, summaries, allDraws] = await Promise.all([
+  [projects, partners, memberships, contractors, budgets, summaries, allDraws] = await Promise.all([
     Store.getProjects(),
     Store.getPartners(),
     Store.getMemberships(),
+    Store.getContractors(),
     Store.getBudgetLines(),
     Store.getExpenseSummaries(),
     Store.getDraws(null),
@@ -1932,6 +2321,7 @@ function onSignedOut() {
   projects = [];
   partners = [];
   memberships = [];
+  contractors = [];
   budgets = [];
   summaries = [];
   allDraws = [];

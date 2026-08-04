@@ -269,13 +269,41 @@ const Store = {
     if (error) throw error;
   },
 
+  // ---------- Contractors ----------
+  // The directory is yours, not a project's: the same trade works across
+  // several deals and the IRS wants one total per person per year.
+  async getContractors() {
+    const rows = await this.select("contractors", "*", (q) =>
+      q.order("name", { ascending: true })
+    );
+    return rows.map(contractorFromRow);
+  },
+
+  async saveContractor(record, id) {
+    await this.requireSession();
+    const row = contractorToRow(record, id || newId());
+    const { data, error } = await this.client
+      .from("contractors")
+      .upsert(row)
+      .select()
+      .single();
+    if (error) throw error;
+    return contractorFromRow(data);
+  },
+
+  async deleteContractor(id) {
+    await this.requireSession();
+    const { error } = await this.client.from("contractors").delete().eq("id", id);
+    if (error) throw error;
+  },
+
   // ---------- Ledger ----------
   // The dashboard needs every project's totals but none of the receipt images,
   // which are base64 and by far the heaviest column. Ask for just the numbers.
   async getExpenseSummaries() {
     const rows = await this.select(
       "expenses",
-      "id,project_id,date,description,category,cost_type,partner_id,amount"
+      "id,project_id,date,description,category,cost_type,partner_id,contractor_id,amount"
     );
     return rows.map(expenseFromRow);
   },
@@ -406,6 +434,7 @@ function expenseToRow(e, id) {
     category: e.category,
     cost_type: e.costType || "Other",
     partner_id: e.partnerId || null,
+    contractor_id: e.contractorId || null,
     amount: Number(e.amount) || 0,
     receipts: Array.isArray(e.receipts) ? e.receipts : [],
   };
@@ -421,8 +450,44 @@ function expenseFromRow(r) {
     category: r.category || "",
     costType: r.cost_type || "Other",
     partnerId: r.partner_id || null,
+    contractorId: r.contractor_id || null,
     amount: Number(r.amount) || 0,
     receipts: Array.isArray(r.receipts) ? r.receipts : [],
+  };
+}
+
+function contractorToRow(c, id) {
+  return {
+    id,
+    name: c.name,
+    company: c.company || null,
+    trade: c.trade || null,
+    phone: c.phone || null,
+    email: c.email || null,
+    w9_on_file: !!c.w9OnFile,
+    tax_id_last4: c.taxIdLast4 || null,
+    coi_expires: c.coiExpires || null,
+    license_number: c.licenseNumber || null,
+    license_expires: c.licenseExpires || null,
+    notes: c.notes || null,
+  };
+}
+
+function contractorFromRow(r) {
+  return {
+    id: r.id,
+    ownerId: r.owner_id || null,
+    name: r.name || "",
+    company: r.company || "",
+    trade: r.trade || "",
+    phone: r.phone || "",
+    email: r.email || "",
+    w9OnFile: !!r.w9_on_file,
+    taxIdLast4: r.tax_id_last4 || "",
+    coiExpires: r.coi_expires || "",
+    licenseNumber: r.license_number || "",
+    licenseExpires: r.license_expires || "",
+    notes: r.notes || "",
   };
 }
 

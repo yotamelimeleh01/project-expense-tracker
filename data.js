@@ -106,6 +106,36 @@ const COST_TYPES = [
   { value: "Other",     label: "Other", is1099: false },
 ];
 
+function is1099CostType(value) {
+  const t = COST_TYPES.find((c) => c.value === value);
+  return !!(t && t.is1099);
+}
+
+// File a 1099-NEC for anyone you paid this much or more in a calendar year for
+// services. Corporations are generally exempt, which is why the report flags a
+// contractor rather than filing anything for you.
+const IRS_1099_THRESHOLD = 600;
+
+// How close an expiry has to be before the app starts nagging.
+const EXPIRY_WARNING_DAYS = 30;
+
+// Compliance state for a certificate of insurance or a licence.
+const COMPLIANCE = {
+  none:    { key: "none",    label: "No date on file" },
+  ok:      { key: "ok",      label: "Current" },
+  soon:    { key: "soon",    label: "Expiring soon" },
+  expired: { key: "expired", label: "Expired" },
+};
+
+function expiryState(dateStr, today) {
+  if (!dateStr) return COMPLIANCE.none;
+  const now = today ? new Date(today) : new Date();
+  const days = Math.floor((new Date(dateStr) - now) / 86400000);
+  if (days < 0) return COMPLIANCE.expired;
+  if (days <= EXPIRY_WARNING_DAYS) return COMPLIANCE.soon;
+  return COMPLIANCE.ok;
+}
+
 // A brand-new project starts with two money partners; rename or add more in
 // project settings.
 const DEFAULT_PARTNER_NAMES = ["Partner A", "Partner B"];

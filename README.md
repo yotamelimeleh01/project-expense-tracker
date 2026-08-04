@@ -95,6 +95,36 @@ subtotalled by category, a certification paragraph and a signature line.
 It warns you if the request exceeds the holdback remaining, or if any line has
 no receipt attached — the usual reason a draw sits on someone's desk.
 
+### Contractors
+
+**Contractors** on the dashboard is your directory of the people you pay. It is
+deliberately not owned by a project — the same electrician works on several of
+your deals, and at year end the numbers have to add up across all of them.
+
+A partner on a shared project can see a contractor named on that project's
+expenses, and nothing else in your directory. They cannot edit it.
+
+### Insurance and licence expiry
+
+Put a COI or licence expiry date against a contractor and the dashboard warns
+you when it lapses, or within 30 days of lapsing. A contractor is judged on
+whichever of the two dates is worse — current insurance is no help if the
+licence ran out last month.
+
+### 1099s
+
+The **1099s** tab totals what each contractor was paid in a calendar year,
+across every project you can see, counting only labour and services. Materials
+are never reportable, which is precisely why cost type is a separate field from
+category.
+
+Anyone over $600 is flagged, and the app tells you which of them still has no
+W-9 on file. Export the lot as CSV for your accountant. Corporations are
+generally exempt, so the report flags people rather than filing anything.
+
+Only the last four digits of a tax ID are stored. Do not type a full SSN or EIN
+into this app — keep the W-9 itself somewhere built to hold it.
+
 ### Why draws are not added to all-in
 
 A construction draw reimburses an expense that is already a line item, so
@@ -123,6 +153,8 @@ Open **SQL Editor → New query** and run these in order:
    cost types, and budget lines
 4. [`supabase-phase2-storage.sql`](supabase-phase2-storage.sql) — the private
    receipts bucket and its access policies
+5. [`supabase-phase3-contractors.sql`](supabase-phase3-contractors.sql) — the
+   contractor directory and the link from expenses to it
 
 Every script after the first is additive and safe to re-run. On an existing
 database they move what you already have onto the new shape rather than
