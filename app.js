@@ -67,9 +67,40 @@ function render() {
   document.getElementById("total-z").textContent = money(t.z);
   document.getElementById("total-all").textContent = money(t.total);
 
+  renderAllIn(t);
   renderReconcileBanner(t);
   renderLoan();
   renderGroups();
+}
+
+// ---------- Headline all-in figure ----------
+// Total capital deployed into the deal = every dollar the partners have paid
+// out of pocket, plus the loan principal the lender funded at closing.
+//
+// Construction draws are deliberately NOT added here. A draw reimburses an
+// expense that is already entered as a line item above, so counting both would
+// inflate this number by the amount of every draw. Draws still increase what
+// is owed back to the lender, which is what the payoff panel tracks.
+function allInNumbers() {
+  const t = totals();
+  const { funded, totalDraws } = loanNumbers();
+  return { partnerCash: t.total, funded, totalDraws, allIn: t.total + funded };
+}
+
+function renderAllIn(t) {
+  const n = allInNumbers();
+  document.getElementById("total-allin").textContent = money(n.allIn);
+
+  const drawNote = n.totalDraws
+    ? "<span class=\"allin-note\">" + money(n.totalDraws) +
+      " of construction draws are not added again here \u2014 they reimburse expenses already " +
+      "counted above. They do raise the lender payoff below.</span>"
+    : "";
+
+  document.getElementById("allin-breakdown").innerHTML =
+    "Partner cash <strong>" + money(n.partnerCash) + "</strong>" +
+    " &nbsp;+&nbsp; Lender funded at closing <strong>" + money(n.funded) + "</strong>" +
+    drawNote;
 }
 
 // ---------- Loan payoff ----------
