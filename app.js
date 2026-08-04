@@ -490,11 +490,18 @@ async function route() {
       syncSummaries();
       await refreshReceiptUrls();
     } catch (err) {
-      reportError("load this project", err);
-      return;
+      if (!Offline.isNetworkError(err)) {
+        reportError("load this project", err);
+        return;
+      }
+      // With no signal the cached summaries carry every figure on the page.
+      // Only the receipt photos are missing, and they say so themselves.
+      expenses = summaries.filter((e) => e.projectId === activeProjectId);
+      draws = allDraws.filter((d) => d.projectId === activeProjectId);
+      receiptUrls = {};
     }
     renderProject();
-    migrateLegacyReceipts();
+    if (Offline.online()) migrateLegacyReceipts();
     return;
   }
 
@@ -1607,7 +1614,131 @@ async function refreshReceiptUrls() {
 }
 
 function receiptSrc(entry) {
-  return isDataUrl(entry) ? entry : receiptUrls[entry] || "";
+  if (isDataUrl(entry)) return entry;
+  // A photo taken with no signal exists only on this device until the queue
+  // drains, so it is shown straight from local storage.
+  return Offline.previewUrl(entry) || receiptUrls[entry] || "";
+}
+
+// ===========================================================================
+// WORKING WITHOUT SIGNAL
+// ===========================================================================
+let syncing = false;
+
+// The bar under the header is the only place the app talks about connectivity.
+// It stays out of the way when there is nothing to report.
+async function renderSyncBar() {
+  const bar = document.getElementById("sync-bar");
+  const text = document.getElementById("sync-text");
+  const now = document.getElementById("sync-now");
+  const discard = document.getElementById("sync-discard");
+
+  const items = await Offline.pending();
+  const stuck = items.filter((i) => i.tries > 0);
+  const offline = !Offline.online();
+
+  if (!items.length && !offline) {
+    bar.classList.add("hidden");
+    return;
+  }
+  bar.classList.remove("hidden");
+  bar.classList.toggle("sync-stuck", stuck.length > 0);
+  bar.classList.toggle("sync-offline", offline && !stuck.length);
+
+  const n = items.length;
+  const changes = n + (n === 1 ? " change" : " changes");
+
+  if (stuck.length) {
+    text.textContent =
+      stuck.length + " of your " + changes + " were refused by the server: " +
+      stuck[0].error + ". The rest are still queued.";
+  } else if (offline && n) {
+    text.textContent = "No signal. " + changes + " saved on this device and will go up on their own.";
+  } else if (offline) {
+    text.textContent = "No signal. You can keep working \u2014 everything is saved here until it can be sent.";
+  } else if (syncing) {
+    text.textContent = "Sending " + changes + "\u2026";
+  } else {
+    text.textContent = changes + " waiting to be sent.";
+  }
+
+  now.classList.toggle("hidden", offline || !n || syncing);
+  discard.classList.toggle("hidden", !stuck.length);
+}
+
+async function syncNow() {
+  if (syncing || !Offline.online()) return;
+  syncing = true;
+  await renderSyncBar();
+  try {
+    const result = await Store.sync();
+    // What came back from the server is the truth, so reload rather than trying
+    // to reconcile by hand.
+    if (result.sent) await loadAll();
+  } catch (err) {
+    console.error(err);
+  } finally {
+    syncing = false;
+    await renderSyncBar();
+  }
+}
+
+// Only ever offered for entries the server has actually refused, never for
+// anything that is merely waiting.
+async function discardStuck() {
+  const items = await Offline.pending();
+  const stuck = items.filter((i) => i.tries > 0);
+  if (!stuck.length) return;
+  if (!confirm(
+    "Throw away " + stuck.length + " change" + (stuck.length === 1 ? "" : "s") +
+    " the server refused? This cannot be undone."
+  )) return;
+  for (const i of stuck) await Offline.remove(i.id);
+  await renderSyncBar();
+}
+
+// A cached copy of the last successful load, so opening the app in a basement
+// shows the project instead of an empty dashboard.
+function snapshotNow() {
+  if (!currentUser) return;
+  Offline.saveSnapshot(currentUser.id, {
+    projects, partners, memberships, contractors, budgets, tasks, summaries, allDraws,
+  });
+}
+
+function restoreSnapshot() {
+  if (!currentUser) return false;
+  const snap = Offline.readSnapshot(currentUser.id);
+  if (!snap || !snap.data) return false;
+  const d = snap.data;
+  projects = d.projects || [];
+  partners = d.partners || [];
+  memberships = d.memberships || [];
+  contractors = d.contractors || [];
+  budgets = d.budgets || [];
+  tasks = d.tasks || [];
+  summaries = d.summaries || [];
+  allDraws = d.allDraws || [];
+  return true;
+}
+
+function registerServiceWorker() {
+  if (!("serviceWorker" in navigator) || location.protocol === "file:") return;
+  navigator.serviceWorker.register("sw.js").then((reg) => {
+    // A new version is never forced on someone mid-entry; they are asked.
+    reg.addEventListener("updatefound", () => {
+      const fresh = reg.installing;
+      if (!fresh) return;
+      fresh.addEventListener("statechange", () => {
+        if (fresh.state === "installed" && navigator.serviceWorker.controller) {
+          if (confirm("A newer version of the app is ready. Reload now?")) {
+            fresh.postMessage("skip-waiting");
+            location.reload();
+          }
+        }
+      });
+    });
+  }).catch((err) => console.warn("[app] service worker did not register", err));
 }
 
 // Old receipts were base64 blobs inside the expense row. Move them across as
@@ -3178,6 +3309,21 @@ document.getElementById("f-receipts").addEventListener("change", (e) => {
   handleReceiptFiles(e.target.files);
   e.target.value = "";
 });
+document.getElementById("f-camera").addEventListener("change", (e) => {
+  handleReceiptFiles(e.target.files);
+  e.target.value = "";
+});
+document.getElementById("sync-now").addEventListener("click", syncNow);
+document.getElementById("sync-discard").addEventListener("click", discardStuck);
+
+// Anything added while offline is announced by the queue itself, so the bar
+// never has to be refreshed by hand from a dozen call sites.
+Offline.onChange(() => renderSyncBar());
+window.addEventListener("online", () => {
+  renderSyncBar();
+  syncNow();
+});
+window.addEventListener("offline", () => renderSyncBar());
 document.getElementById("lightbox").addEventListener("click", closeLightbox);
 document.addEventListener("keydown", (e) => {
   if (e.key !== "Escape") return;
@@ -3278,16 +3424,25 @@ function fillStaticSelects() {
 }
 
 async function loadAll() {
-  [projects, partners, memberships, contractors, budgets, tasks, summaries, allDraws] = await Promise.all([
-    Store.getProjects(),
-    Store.getPartners(),
-    Store.getMemberships(),
-    Store.getContractors(),
-    Store.getBudgetLines(),
-    Store.getTasks(null),
-    Store.getExpenseSummaries(),
-    Store.getDraws(null),
-  ]);
+  try {
+    [projects, partners, memberships, contractors, budgets, tasks, summaries, allDraws] = await Promise.all([
+      Store.getProjects(),
+      Store.getPartners(),
+      Store.getMemberships(),
+      Store.getContractors(),
+      Store.getBudgetLines(),
+      Store.getTasks(null),
+      Store.getExpenseSummaries(),
+      Store.getDraws(null),
+    ]);
+    snapshotNow();
+  } catch (err) {
+    // Losing signal is not the same as losing the data. Fall back to the last
+    // copy that did load and say so, rather than showing an empty portfolio.
+    if (!Offline.isNetworkError(err) || !restoreSnapshot()) throw err;
+    console.warn("[app] offline, showing the last data that loaded", err);
+  }
+  await renderSyncBar();
   await route();
 }
 
@@ -3302,9 +3457,13 @@ async function onSignedIn(user) {
     document.getElementById("auth-status").textContent = "Signed in \u00b7 could not load data";
     reportError("load your data", err);
   }
+  // Anything typed on the last trip out goes up now.
+  syncNow();
 }
 
 function onSignedOut() {
+  // The cached copy belongs to whoever was signed in. It goes with them.
+  if (currentUser) Offline.clearSnapshot(currentUser.id);
   currentUser = null;
   booted = true;
   projects = [];
@@ -3324,6 +3483,7 @@ function onSignedOut() {
 
 async function boot() {
   fillStaticSelects();
+  registerServiceWorker();
 
   if (!(await Store.init())) {
     document.getElementById("auth-status").textContent =

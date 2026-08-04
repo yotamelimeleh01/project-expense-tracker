@@ -4,6 +4,14 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>Project Expense Tracker</title>
+  <meta name="description" content="What a renovation has really cost, who paid for it, and when it will be finished." />
+  <meta name="theme-color" content="#0f2038" />
+  <meta name="apple-mobile-web-app-capable" content="yes" />
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+  <meta name="apple-mobile-web-app-title" content="Projects" />
+  <link rel="manifest" href="manifest.webmanifest" />
+  <link rel="icon" href="icons/icon-192.png" />
+  <link rel="apple-touch-icon" href="icons/icon-192.png" />
   <link rel="stylesheet" href="styles.css" />
 </head>
 <body>
@@ -25,6 +33,14 @@
       </nav>
     </div>
   </header>
+
+  <!-- Says plainly what has not reached the server yet. Hidden when there is
+       nothing to say. -->
+  <div id="sync-bar" class="sync-bar hidden" role="status">
+    <span id="sync-text" class="sync-text"></span>
+    <button id="sync-now" class="btn btn-small hidden">Sync Now</button>
+    <button id="sync-discard" class="btn btn-small btn-danger hidden">Discard</button>
+  </div>
 
   <main class="container">
     <!-- ================= DASHBOARD ================= -->
@@ -240,6 +256,8 @@
           </label>
           <div class="full receipts-field">
             <span class="field-label">Receipts</span>
+            <label class="btn upload-btn" for="f-camera">📷 Take A Photo</label>
+            <input id="f-camera" type="file" accept="image/*" capture="environment" hidden />
             <label class="btn upload-btn" for="f-receipts">+ Add Receipt Photos</label>
             <input id="f-receipts" type="file" accept="image/*" multiple hidden />
             <div id="receipt-previews" class="receipt-previews"></div>
@@ -675,6 +693,7 @@
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.45.4/dist/umd/supabase.min.js"></script>
   <script src="config.js"></script>
   <script src="data.js"></script>
+  <script src="offline.js"></script>
   <script src="store.js"></script>
   <script src="app.js"></script>
 </body>

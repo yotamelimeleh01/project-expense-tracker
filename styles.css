@@ -1212,3 +1212,27 @@ tbody td { padding: 10px 12px; font-size: 14px; border-bottom: 1px solid var(--l
   .g-now { left: 130px; right: 90px; }
   .g-dates { display: none; }
 }
+
+/* ---------- Working without signal ---------- */
+.sync-bar {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 9px 20px;
+  background: #fef9c3;
+  color: #713f12;
+  border-bottom: 1px solid #fde68a;
+  font-size: 0.84rem;
+}
+.sync-bar.sync-offline {
+  background: #e2e8f0;
+  color: #334155;
+  border-bottom-color: #cbd5e1;
+}
+.sync-bar.sync-stuck {
+  background: #fee2e2;
+  color: #991b1b;
+  border-bottom-color: #fecaca;
+}
+.sync-text { flex: 1; }
+.sync-bar .btn { flex: none; }

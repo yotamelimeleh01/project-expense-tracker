@@ -83,6 +83,112 @@ const Store = {
     return data || [];
   },
 
+  // ---------- Writing without signal ----------
+  // Everything you touch standing in a driveway goes through here. If the write
+  // cannot leave the phone it is put in a durable queue and the caller is handed
+  // the row it would have got back, so the screen updates and the ledger is
+  // right the moment there is signal again.
+  //
+  // Only writes that failed on the way out are queued. A permission error or a
+  // rejected column is a real answer and has to surface immediately, or it would
+  // sit in the queue being retried forever.
+  async writeThrough(kind, payload, run, shape) {
+    if (!Offline.online()) {
+      await Offline.add(kind, payload);
+      return shape ? shape(payload) : undefined;
+    }
+    try {
+      return await run();
+    } catch (err) {
+      if (!Offline.isNetworkError(err)) throw err;
+      await Offline.add(kind, payload);
+      return shape ? shape(payload) : undefined;
+    }
+  },
+
+  // Replays the queue oldest first. Order matters: an expense is saved before
+  // the photo that belongs to it, which is exactly the order they were queued.
+  async sync() {
+    const items = await Offline.pending();
+    const result = { sent: 0, stuck: 0, left: items.length };
+    if (!items.length || !Offline.online()) return result;
+
+    for (const item of items) {
+      try {
+        await this.replay(item);
+        await Offline.remove(item.id);
+        result.sent++;
+        result.left--;
+      } catch (err) {
+        // Still no signal: stop and keep the rest for next time, unchanged.
+        if (Offline.isNetworkError(err)) break;
+        // A real rejection. Keep it, record why, and let the app show it rather
+        // than throwing the entry away.
+        item.tries++;
+        item.error = String(err.message || err);
+        await Offline.update(item);
+        result.stuck++;
+      }
+    }
+    Offline.announce();
+    return result;
+  },
+
+  async replay(item) {
+    const p = item.payload;
+    switch (item.kind) {
+      case "expense.save":
+        return this.send("expenses", p);
+      case "expense.delete":
+        return this.erase("expenses", p.id);
+      case "draw.save":
+        return this.send("draws", p);
+      case "draw.delete":
+        return this.erase("draws", p.id);
+      case "task.save":
+        return this.send("tasks", p);
+      case "task.delete":
+        return this.erase("tasks", p.id);
+      case "budget.save":
+        return this.send("budget_lines", p, { onConflict: "project_id,category" });
+      case "budget.delete":
+        return this.erase("budget_lines", p.id);
+      case "receipt.upload": {
+        const blob = await Offline.takeReceipt(p.path);
+        // The photo is gone from this device — a cleared cache, most likely.
+        // Nothing can bring it back, so drop the entry rather than retry.
+        if (!blob) return;
+        await this.requireSession();
+        const { error } = await this.client.storage
+          .from("receipts")
+          .upload(p.path, blob, { contentType: p.type || "image/jpeg", upsert: true });
+        if (error) throw error;
+        await Offline.dropReceipt(p.path);
+        return;
+      }
+      case "receipt.delete": {
+        await this.requireSession();
+        const { error } = await this.client.storage.from("receipts").remove(p.paths);
+        if (error) throw error;
+        return;
+      }
+      default:
+        throw new Error("Nothing knows how to send a " + item.kind);
+    }
+  },
+
+  async send(table, row, opts) {
+    await this.requireSession();
+    const { error } = await this.client.from(table).upsert(row, opts);
+    if (error) throw error;
+  },
+
+  async erase(table, id) {
+    await this.requireSession();
+    const { error } = await this.client.from(table).delete().eq("id", id);
+    if (error) throw error;
+  },
+
   // ---------- Projects ----------
   async getProjects() {
     const rows = await this.select("projects", "*", (q) =>
@@ -170,17 +276,26 @@ const Store = {
   },
 
   async saveTask(record, id) {
-    await this.requireSession();
     const row = taskToRow(record, id || newId());
-    const { data, error } = await this.client.from("tasks").upsert(row).select().single();
-    if (error) throw error;
-    return taskFromRow(data);
+    return this.writeThrough(
+      "task.save",
+      row,
+      async () => {
+        await this.requireSession();
+        const { data, error } = await this.client.from("tasks").upsert(row).select().single();
+        if (error) throw error;
+        return taskFromRow(data);
+      },
+      taskFromRow
+    );
   },
 
   async deleteTask(id) {
-    await this.requireSession();
-    const { error } = await this.client.from("tasks").delete().eq("id", id);
-    if (error) throw error;
+    return this.writeThrough("task.delete", { id }, async () => {
+      await this.requireSession();
+      const { error } = await this.client.from("tasks").delete().eq("id", id);
+      if (error) throw error;
+    });
   },
 
   // ---------- Share links (read-only access without an account) ----------
@@ -265,7 +380,6 @@ const Store = {
   },
 
   async saveBudgetLine(record, id) {
-    await this.requireSession();
     const row = {
       id: id || newId(),
       project_id: record.projectId,
@@ -273,21 +387,31 @@ const Store = {
       amount: Number(record.amount) || 0,
       notes: record.notes || null,
     };
-    // Upsert on (project_id, category) so re-saving the budget sheet updates
-    // in place instead of piling up duplicate lines.
-    const { data, error } = await this.client
-      .from("budget_lines")
-      .upsert(row, { onConflict: "project_id,category" })
-      .select()
-      .single();
-    if (error) throw error;
-    return budgetFromRow(data);
+    return this.writeThrough(
+      "budget.save",
+      row,
+      async () => {
+        await this.requireSession();
+        // Upsert on (project_id, category) so re-saving the budget sheet updates
+        // in place instead of piling up duplicate lines.
+        const { data, error } = await this.client
+          .from("budget_lines")
+          .upsert(row, { onConflict: "project_id,category" })
+          .select()
+          .single();
+        if (error) throw error;
+        return budgetFromRow(data);
+      },
+      budgetFromRow
+    );
   },
 
   async deleteBudgetLine(id) {
-    await this.requireSession();
-    const { error } = await this.client.from("budget_lines").delete().eq("id", id);
-    if (error) throw error;
+    return this.writeThrough("budget.delete", { id }, async () => {
+      await this.requireSession();
+      const { error } = await this.client.from("budget_lines").delete().eq("id", id);
+      if (error) throw error;
+    });
   },
 
   // ---------- Receipt photos ----------
@@ -299,21 +423,38 @@ const Store = {
     return `${projectId}/${expenseId || "loose"}/${Date.now().toString(36)}${rand}.${ext || "jpg"}`;
   },
 
+  // The photo is held on the device and uploaded when there is signal. The path
+  // is decided here either way, so the expense row can reference it straight
+  // away and nothing has to be patched up afterwards.
   async uploadReceipt(projectId, expenseId, blob) {
-    await this.requireSession();
     const ext = (blob.type || "image/jpeg").split("/")[1].replace("jpeg", "jpg");
     const path = this.receiptPath(projectId, expenseId, ext);
-    const { error } = await this.client.storage
-      .from("receipts")
-      .upload(path, blob, { contentType: blob.type || "image/jpeg", upsert: false });
-    if (error) throw error;
-    return path;
+    const queue = async () => {
+      await Offline.holdReceipt(path, blob);
+      await Offline.add("receipt.upload", { path, type: blob.type || "image/jpeg" });
+      return path;
+    };
+
+    if (!Offline.online()) return queue();
+    try {
+      await this.requireSession();
+      const { error } = await this.client.storage
+        .from("receipts")
+        .upload(path, blob, { contentType: blob.type || "image/jpeg", upsert: false });
+      if (error) throw error;
+      return path;
+    } catch (err) {
+      if (!Offline.isNetworkError(err)) throw err;
+      return queue();
+    }
   },
 
   // Nothing in the bucket is publicly readable, so every image needs a signed
   // URL. One round trip for the whole project rather than one per photo.
   async signReceipts(paths, seconds = 3600) {
-    const list = paths.filter((p) => p && !isDataUrl(p));
+    // A photo still waiting to upload has no URL to sign; the app shows it
+    // straight off the device instead.
+    const list = paths.filter((p) => p && !isDataUrl(p) && !Offline.previewUrl(p));
     if (!list.length) return {};
     await this.requireSession();
     const { data, error } = await this.client.storage
@@ -330,9 +471,22 @@ const Store = {
   async deleteReceipts(paths) {
     const list = (paths || []).filter((p) => p && !isDataUrl(p));
     if (!list.length) return;
-    await this.requireSession();
-    const { error } = await this.client.storage.from("receipts").remove(list);
-    if (error) throw error;
+    // A photo that never made it off the device is dropped locally instead of
+    // asking the server to remove something it has never seen.
+    const pending = [];
+    const remote = [];
+    for (const p of list) {
+      if (Offline.previewUrl(p)) pending.push(p);
+      else remote.push(p);
+    }
+    for (const p of pending) await Offline.dropReceipt(p);
+    if (!remote.length) return;
+
+    return this.writeThrough("receipt.delete", { paths: remote }, async () => {
+      await this.requireSession();
+      const { error } = await this.client.storage.from("receipts").remove(remote);
+      if (error) throw error;
+    });
   },
 
   // ---------- Contractors ----------
@@ -390,31 +544,49 @@ const Store = {
   },
 
   async saveExpense(record, id) {
-    await this.requireSession();
     const row = expenseToRow(record, id || newId());
-    const { data, error } = await this.client.from("expenses").upsert(row).select().single();
-    if (error) throw error;
-    return expenseFromRow(data);
+    return this.writeThrough(
+      "expense.save",
+      row,
+      async () => {
+        await this.requireSession();
+        const { data, error } = await this.client.from("expenses").upsert(row).select().single();
+        if (error) throw error;
+        return expenseFromRow(data);
+      },
+      expenseFromRow
+    );
   },
 
   async deleteExpense(id) {
-    await this.requireSession();
-    const { error } = await this.client.from("expenses").delete().eq("id", id);
-    if (error) throw error;
+    return this.writeThrough("expense.delete", { id }, async () => {
+      await this.requireSession();
+      const { error } = await this.client.from("expenses").delete().eq("id", id);
+      if (error) throw error;
+    });
   },
 
   async saveDraw(record, id) {
-    await this.requireSession();
     const row = drawToRow(record, id || newId());
-    const { data, error } = await this.client.from("draws").upsert(row).select().single();
-    if (error) throw error;
-    return drawFromRow(data);
+    return this.writeThrough(
+      "draw.save",
+      row,
+      async () => {
+        await this.requireSession();
+        const { data, error } = await this.client.from("draws").upsert(row).select().single();
+        if (error) throw error;
+        return drawFromRow(data);
+      },
+      drawFromRow
+    );
   },
 
   async deleteDraw(id) {
-    await this.requireSession();
-    const { error } = await this.client.from("draws").delete().eq("id", id);
-    if (error) throw error;
+    return this.writeThrough("draw.delete", { id }, async () => {
+      await this.requireSession();
+      const { error } = await this.client.from("draws").delete().eq("id", id);
+      if (error) throw error;
+    });
   },
 };
 

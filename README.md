@@ -190,6 +190,34 @@ Days are calendar days, weekends included. A circular dependency is reported by
 name rather than silently accepted, and deleting a phase clears it from
 whatever was waiting on it.
 
+### On site with no signal
+
+The app installs to a phone's home screen — open it in the browser and choose
+**Add to Home Screen**. From then on it opens full screen with its own icon and
+no address bar.
+
+A half-gutted house is exactly where the signal dies, so nothing depends on
+having one. Expenses, draws, budget lines and schedule phases can all be typed
+with no connection. They appear on screen immediately and every total updates,
+but they are held on the device and a bar under the header says how many are
+waiting. When the signal comes back they go up on their own, and the page
+reloads from the server so what you see is what was actually saved.
+
+Receipt photos work the same way. **Take A Photo** opens the camera straight
+from the expense form. The photo is compressed, held in the device's storage,
+and shown in the expense while it waits its turn to upload.
+
+The difference that matters is between a change that never left the phone and a
+change the server looked at and refused. The first is queued and retried. The
+second is never queued — you are told what the server said the moment it says
+it, because quietly retrying a rejected write forever, while claiming the work
+was saved, is worse than losing it.
+
+Opening the app with no signal at all still shows the portfolio: the last
+successful load is kept in the browser's storage. Receipt photos are the one
+thing that will not appear, since they live in Storage. That cached copy is
+wiped on sign-out.
+
 ### Why draws are not added to all-in
 
 A construction draw reimburses an expense that is already a line item, so
@@ -228,6 +256,9 @@ Open **SQL Editor → New query** and run these in order:
 Every script after the first is additive and safe to re-run. On an existing
 database they move what you already have onto the new shape rather than
 deleting anything.
+
+Working offline needs no migration \u2014 the queue and the cached copy live in the
+browser, not the database.
 
 ### 3. Create logins
 
@@ -274,3 +305,8 @@ npx serve .
 
 Hosted via GitHub Pages from the `main` branch (root). Any push to `main`
 updates the live site.
+
+The app is cached by a service worker, so anyone who already has it open keeps
+the old version until they accept the reload it offers them. Bump `CACHE` in
+`sw.js` whenever the list of shell files changes, or the new files will not be
+picked up.
