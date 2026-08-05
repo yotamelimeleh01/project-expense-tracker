@@ -471,6 +471,24 @@ function goProject(id) {
   location.hash = "#/p/" + encodeURIComponent(id);
 }
 
+// ---------- Project tabs ----------
+// One project used to be a single long scroll. It is now five, because on a
+// phone the schedule sat four screens below the number you opened the app for.
+// The tab survives a re-render on purpose: adding an expense must not throw you
+// back to the overview halfway through a stack of receipts.
+const PROJECT_TABS = ["overview", "expenses", "budget", "schedule", "loan"];
+let projectTab = "overview";
+
+function showProjectTab(name) {
+  projectTab = PROJECT_TABS.includes(name) ? name : "overview";
+  document.querySelectorAll("#project-tabs .tab").forEach((t) =>
+    t.classList.toggle("active", t.dataset.ptab === projectTab)
+  );
+  PROJECT_TABS.forEach((t) =>
+    document.getElementById("ptab-" + t).classList.toggle("hidden", t !== projectTab)
+  );
+}
+
 async function route() {
   if (shareMode) return;
   const r = currentRoute();
@@ -655,6 +673,13 @@ function renderProject() {
   const p = activeProject();
   if (!p) return;
   const editable = canEdit(p.id);
+
+  // A cash deal has nothing to pay off, so the tab goes with the panel. The
+  // marker keeps it off the printed page too, where every tab is unfolded.
+  document.getElementById("project-view").classList.toggle("no-loan", !isFinanced(p));
+  document.getElementById("ptab-loan-btn").classList.toggle("hidden", !isFinanced(p));
+  if (!isFinanced(p) && projectTab === "loan") projectTab = "overview";
+  showProjectTab(projectTab);
 
   document.getElementById("p-name").textContent = p.name;
   document.getElementById("p-address").textContent = p.address || "";
@@ -1274,9 +1299,7 @@ async function deleteTaskFromForm() {
 
 // ---------- Loan payoff ----------
 function renderLoan(p) {
-  // A cash deal has no note, no holdback and nothing to pay off, so the whole
-  // panel goes away rather than sitting there full of zeros.
-  document.querySelector(".loan-panel").classList.toggle("hidden", !isFinanced(p));
+  // Nothing to pay off on a cash deal, and no tab to show it on either.
   if (!isFinanced(p)) return;
 
   const n = loanNumbers(p, draws);
@@ -3366,6 +3389,9 @@ document.getElementById("contractor-modal").addEventListener("click", (e) => {
 });
 document.querySelectorAll("#contractor-modal .tab").forEach((t) =>
   t.addEventListener("click", () => showContractorTab(t.dataset.tab))
+);
+document.querySelectorAll("#project-tabs .tab").forEach((t) =>
+  t.addEventListener("click", () => showProjectTab(t.dataset.ptab))
 );
 document.getElementById("add-contractor-btn").addEventListener("click", () => openContractorEdit(null));
 document.getElementById("tax-year").addEventListener("change", renderTaxList);

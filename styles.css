@@ -897,6 +897,19 @@ tbody td { padding: 10px 12px; font-size: 14px; border-bottom: 1px solid var(--l
   cursor: pointer;
 }
 .tab.active { color: var(--blue); border-bottom-color: var(--blue); }
+
+/* The same strip, but standing on the page rather than inside a modal, so it
+   needs the card treatment everything else on the project page has. */
+.project-tabs {
+  background: #fff;
+  border: 1px solid var(--line);
+  border-radius: 14px;
+  padding: 4px 6px 0;
+  margin-bottom: 18px;
+  gap: 2px;
+}
+.project-tabs .tab { font-size: 14px; padding: 10px 16px; }
+
 .tab-toolbar { display: flex; align-items: center; gap: 12px; margin-bottom: 12px; }
 .tab-toolbar .spacer { flex: 1; }
 
@@ -1058,6 +1071,12 @@ tbody td { padding: 10px 12px; font-size: 14px; border-bottom: 1px solid var(--l
   .topbar { background: #0f2038 !important; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
   .toolbar, .actions-cell, th.actions-col, .footer em { display: none !important; }
   body { background: #fff; }
+
+  /* A tab is a way of coping with a small screen. Paper has no such problem,
+     so a printed project is the whole project, tab strip and all put away. */
+  .project-tabs { display: none !important; }
+  .tab-panel.hidden { display: block !important; }
+  .no-loan #ptab-loan { display: none !important; }
 
   /* Printing a draw request: the document is the only thing on the page. */
   body.printing-draw > *:not(.drawreq-doc) { display: none !important; }

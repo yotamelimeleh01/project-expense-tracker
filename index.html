@@ -90,15 +90,24 @@
         </div>
       </section>
 
-      <!-- Headline: every dollar in the deal -->
+      <!-- Headline: every dollar in the deal. Stays in view whichever tab you
+           are on, because it is the one number the whole app is about. -->
       <section class="allin" aria-label="Total all-in on this project">
         <div class="allin-label">Total All-In On This Project</div>
         <div class="allin-value" id="total-allin">$0.00</div>
         <div class="allin-break" id="allin-breakdown"></div>
       </section>
 
-      <!-- Profit, once a sale price is entered -->
-      <section class="profit-panel hidden" id="profit-panel" aria-label="Profit">
+      <div class="tabs project-tabs" id="project-tabs" role="tablist">
+        <button class="tab active" data-ptab="overview">Overview</button>
+        <button class="tab" data-ptab="expenses">Expenses</button>
+        <button class="tab" data-ptab="budget">Budget</button>
+        <button class="tab" data-ptab="schedule">Schedule</button>
+        <button class="tab" data-ptab="loan" id="ptab-loan-btn">Loan</button>
+      </div>
+
+      <div id="ptab-overview" class="tab-panel">
+      <!-- Profit, once a sale price is entered -->      <section class="profit-panel hidden" id="profit-panel" aria-label="Profit">
         <div class="cards">
           <div class="card">
             <div class="card-label">Sale Price</div>
@@ -129,7 +138,21 @@
         <p class="budget-note" id="split-note"></p>
       </section>
 
+      <!-- Cost breakdown by bucket. Belongs with the overview: it is the same
+           money as the headline, only spelled out. -->
+      <section class="breakdown" aria-label="Cost breakdown">
+        <div class="breakdown-head">
+          <h2>Where The Money Went</h2>
+          <span class="breakdown-total" id="breakdown-total"></span>
+        </div>
+        <div id="breakdown-groups"></div>
+        <p class="breakdown-note" id="breakdown-note"></p>
+      </section>
+
+      </div>
+
       <!-- Budget vs actual -->
+      <div id="ptab-budget" class="tab-panel hidden">
       <section class="budget-panel" aria-label="Budget versus actual">
         <div class="breakdown-head">
           <h2>Budget vs Actual</h2>
@@ -143,7 +166,10 @@
         <p class="breakdown-note" id="budget-note"></p>
       </section>
 
+      </div>
+
       <!-- Schedule -->
+      <div id="ptab-schedule" class="tab-panel hidden">
       <section class="schedule-panel" aria-label="Schedule">
         <div class="breakdown-head">
           <h2>Schedule</h2>
@@ -157,17 +183,10 @@
         <p class="breakdown-note" id="schedule-note"></p>
       </section>
 
-      <!-- Cost breakdown by bucket -->
-      <section class="breakdown" aria-label="Cost breakdown">
-        <div class="breakdown-head">
-          <h2>Where The Money Went</h2>
-          <span class="breakdown-total" id="breakdown-total"></span>
-        </div>
-        <div id="breakdown-groups"></div>
-        <p class="breakdown-note" id="breakdown-note"></p>
-      </section>
+      </div>
 
-      <!-- Lender payoff -->
+      <!-- Lender payoff. The tab itself is put away on a cash deal. -->
+      <div id="ptab-loan" class="tab-panel hidden">
       <section class="loan-panel" aria-label="Loan payoff">
         <div class="loan-head">
           <h2>Loan Payoff at Sale</h2>
@@ -198,7 +217,10 @@
         <div id="draws-table"></div>
       </section>
 
-      <!-- Toolbar -->
+      </div>
+
+      <!-- Every expense on the job -->
+      <div id="ptab-expenses" class="tab-panel hidden">
       <section class="toolbar">
         <button id="add-btn" class="btn btn-primary">+ Add Expense</button>
         <div class="spacer"></div>
@@ -215,6 +237,7 @@
 
       <!-- Grouped expense tables -->
       <div id="groups"></div>
+      </div>
     </section>
 
     <!-- ================= STAKEHOLDER VIEW =================
