@@ -286,6 +286,86 @@ const Store = {
     return newId();
   },
 
+  // ---------- Categories (the scope of work) ----------
+  // A row with a project_id is that project's list. A row without one belongs
+  // to your own library, which is what a new project is started from.
+  // Pass no id to load every project's list at once.
+  async getCategories(projectId) {
+    const rows = await this.select("categories", "*", (q) => {
+      const base = q.not("project_id", "is", null).order("sort", { ascending: true });
+      return projectId ? base.eq("project_id", projectId) : base;
+    });
+    return rows.map(categoryFromRow);
+  },
+
+  async getCategoryLibrary() {
+    const session = await this.requireSession();
+    const rows = await this.select("categories", "*", (q) =>
+      q.is("project_id", null).eq("owner", session.user.id).order("sort", { ascending: true })
+    );
+    return rows.map(categoryFromRow);
+  },
+
+  async saveCategory(record, id) {
+    const session = await this.requireSession();
+    const row = {
+      id: id || newId(),
+      project_id: record.projectId || null,
+      owner: record.projectId ? null : session.user.id,
+      name: record.name,
+      group_key: record.group || "build",
+      default_cost_type: record.defaultCostType || "Other",
+      sort: Number(record.sort) || 0,
+    };
+    const { data, error } = await this.client
+      .from("categories")
+      .upsert(row)
+      .select()
+      .single();
+    if (error) throw explainDenial(error, session, row);
+    return categoryFromRow(data);
+  },
+
+  async deleteCategory(id) {
+    await this.requireSession();
+    const { error } = await this.client.from("categories").delete().eq("id", id);
+    if (error) throw error;
+  },
+
+  // Renaming a phase has to carry everything filed under it. The name is what
+  // an expense, a budget line and a schedule phase all point at, so leaving any
+  // of them behind would empty the category the moment it was renamed.
+  async renameCategory(projectId, from, to) {
+    await this.requireSession();
+    for (const table of ["expenses", "budget_lines", "tasks"]) {
+      const { error } = await this.client
+        .from(table)
+        .update({ category: to })
+        .eq("project_id", projectId)
+        .eq("category", from);
+      if (error) throw error;
+    }
+  },
+
+  // A new project starts from your library, or from the built-in list the
+  // first time round when the library is still empty.
+  async seedCategories(projectId, list) {
+    const session = await this.requireSession();
+    const rows = list.map((c, i) => ({
+      id: newId(),
+      project_id: projectId,
+      owner: null,
+      name: c.name,
+      group_key: c.group || "build",
+      default_cost_type: c.defaultCostType || "Other",
+      sort: (i + 1) * 10,
+    }));
+    if (!rows.length) return [];
+    const { data, error } = await this.client.from("categories").insert(rows).select();
+    if (error) throw explainDenial(error, session, rows[0]);
+    return (data || []).map(categoryFromRow);
+  },
+
   // ---------- Partners (whose money is in the deal) ----------
   async getPartners() {
     const rows = await this.select("project_partners", "*", (q) =>
@@ -648,6 +728,17 @@ const Store = {
 // ---------- Row mappers ----------
 function num(v) {
   return v === null || v === undefined || v === "" ? null : Number(v);
+}
+
+function categoryFromRow(r) {
+  return {
+    id: r.id,
+    projectId: r.project_id || null,
+    name: r.name,
+    group: r.group_key || "build",
+    defaultCostType: r.default_cost_type || "Other",
+    sort: r.sort || 0,
+  };
 }
 
 function projectToRow(p, id) {

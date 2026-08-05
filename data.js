@@ -67,8 +67,9 @@ const CATEGORY_GROUPS = [
 ];
 
 // Order matters: this is the sequence they appear in every dropdown, budget
-// sheet and report, and it follows the real order of a job.
-const CATEGORIES = [
+// sheet and report, and it follows the real order of a job. This is only where
+// a project starts — from its first day the list is the project's own.
+const DEFAULT_CATEGORIES = [
   { name: "Closing & Deal Costs", group: "acquire", defaultCostType: "Fees" },
 
   { name: "Permits & Inspections",           group: "build", defaultCostType: "Fees" },
@@ -90,19 +91,30 @@ const CATEGORIES = [
   { name: "Sale & Disposition Costs", group: "sell", defaultCostType: "Fees" },
 ];
 
-const CATEGORY_NAMES = CATEGORIES.map((c) => c.name);
+// The list in force for whatever project is open. Every lookup below goes
+// through it, so renaming a phase changes the dropdowns, the budget sheet, the
+// breakdown and the reports in one move.
+let activeCategories = DEFAULT_CATEGORIES.slice();
+
+function setActiveCategories(list) {
+  activeCategories = list && list.length ? list.slice() : DEFAULT_CATEGORIES.slice();
+}
+
+function categoryNames() {
+  return activeCategories.map((c) => c.name);
+}
 
 function categoryGroup(name) {
-  const c = CATEGORIES.find((x) => x.name === name);
+  const c = activeCategories.find((x) => x.name === name);
   return c ? c.group : "build";
 }
 
 function categoriesIn(groupKey) {
-  return CATEGORIES.filter((c) => c.group === groupKey).map((c) => c.name);
+  return activeCategories.filter((c) => c.group === groupKey).map((c) => c.name);
 }
 
 function defaultCostTypeFor(category) {
-  const c = CATEGORIES.find((x) => x.name === category);
+  const c = activeCategories.find((x) => x.name === category);
   return c ? c.defaultCostType : "Other";
 }
 

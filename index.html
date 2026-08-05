@@ -59,6 +59,7 @@
       <section class="toolbar">
         <button id="new-project-btn" class="btn btn-primary">+ New Project</button>
         <button id="contractors-btn" class="btn">Contractors</button>
+        <button id="library-btn" class="btn">Categories</button>
         <div class="spacer"></div>
         <label class="group-label">Show
           <select id="status-filter">
@@ -158,6 +159,7 @@
           <h2>Budget vs Actual</h2>
           <div class="budget-head-right">
             <span class="budget-health" id="budget-health"></span>
+            <button id="categories-btn" class="btn">Categories</button>
             <button id="budget-btn" class="btn">Edit Scope &amp; Budget</button>
           </div>
         </div>
@@ -561,6 +563,30 @@
   <!-- Printed output for the draw request. Hidden on screen, the only thing
        visible on paper once body.printing-draw is set. -->
   <div id="drawreq-doc" class="drawreq-doc" aria-hidden="true"></div>
+
+  <!-- The scope of work: rename a phase, add one, drop one -->
+  <div id="category-modal" class="modal-overlay hidden">
+    <div class="modal modal-lg">
+      <h2 id="category-modal-title">Categories</h2>
+      <p class="form-hint" id="category-modal-blurb"></p>
+
+      <div id="category-editor"></div>
+
+      <div class="cat-add">
+        <input type="text" id="cat-new-name" placeholder="New category name" />
+        <select id="cat-new-group" aria-label="Bucket"></select>
+        <select id="cat-new-costtype" aria-label="Usual cost type"></select>
+        <button type="button" id="cat-add-btn" class="btn btn-primary">+ Add</button>
+      </div>
+      <p class="form-hint" id="cat-error"></p>
+
+      <div class="modal-actions">
+        <button type="button" id="cat-restore" class="btn">Restore Missing Defaults</button>
+        <div class="spacer"></div>
+        <button type="button" id="cat-close" class="btn btn-primary">Done</button>
+      </div>
+    </div>
+  </div>
 
   <!-- Contractor directory and 1099s -->
   <div id="contractor-modal" class="modal-overlay hidden">

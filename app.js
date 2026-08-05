@@ -9,6 +9,7 @@ let budgets = [];        // budget lines for every project you can see
 let tasks = [];          // schedule phases for every project you can see
 let summaries = [];      // lightweight expense rows for every project
 let allDraws = [];       // draw rows for every project
+let allCategories = [];  // the scope of work for every project you can see
 
 let expenses = [];       // full rows (with receipts) for the open project
 let draws = [];          // draw rows for the open project
@@ -117,7 +118,9 @@ function budgetRows(projectId, expenseList) {
   const names = new Set(lines.map((b) => b.category));
   for (const e of expenseList) if (e.category) names.add(e.category);
 
-  return CATEGORY_NAMES.concat([...names].filter((n) => !CATEGORY_NAMES.includes(n)))
+  const known = categoryNames();
+  return known
+    .concat([...names].filter((n) => !known.includes(n)))
     .filter((n) => names.has(n))
     .map((name) => {
       const line = lines.find((b) => b.category === name);
@@ -498,6 +501,7 @@ async function route() {
 
   if (r.view === "project" && projects.some((p) => p.id === r.id)) {
     activeProjectId = r.id;
+    setActiveCategories(allCategories.filter((c) => c.projectId === activeProjectId));
     dash.classList.add("hidden");
     proj.classList.remove("hidden");
     crumbs.classList.remove("hidden");
@@ -524,6 +528,7 @@ async function route() {
   }
 
   activeProjectId = null;
+  setActiveCategories(null);
   expenses = [];
   draws = [];
   proj.classList.add("hidden");
@@ -1369,7 +1374,7 @@ function groupKey(e, mode) {
 function orderedGroups(mode) {
   if (mode === "partner") return partnersOf(activeProjectId).map((p) => p.name);
   if (mode === "costType") return COST_TYPES.map((c) => c.value);
-  return CATEGORY_NAMES.slice();
+  return categoryNames();
 }
 
 function renderGroups() {
@@ -1736,6 +1741,7 @@ function snapshotNow() {
   if (!currentUser) return;
   Offline.saveSnapshot(currentUser.id, {
     projects, partners, memberships, contractors, budgets, tasks, summaries, allDraws,
+    allCategories,
   });
 }
 
@@ -1752,6 +1758,7 @@ function restoreSnapshot() {
   tasks = d.tasks || [];
   summaries = d.summaries || [];
   allDraws = d.allDraws || [];
+  allCategories = d.allCategories || [];
   return true;
 }
 
@@ -1936,9 +1943,16 @@ function applyScan(found) {
     said.push(found.vendor);
   }
 
-  // The category is only suggested over the default, never over a choice.
+  // The category is only suggested over the default, never over a choice — and
+  // only if this project actually runs on the phase the photo looks like. The
+  // list is the project's own now, so a guess can name one it does not have.
   const catEl = document.getElementById("f-category");
-  if (found.category && catEl.value === "General Construction" && found.category !== catEl.value) {
+  if (
+    found.category &&
+    catEl.value === "General Construction" &&
+    found.category !== catEl.value &&
+    categoryNames().includes(found.category)
+  ) {
     set("f-category", found.category);
     document.getElementById("f-costtype").value = defaultCostTypeFor(found.category);
     syncContractorField();
@@ -2323,6 +2337,265 @@ function showContractorTab(name) {
   document.getElementById("tab-tax").classList.toggle("hidden", name !== "tax");
 }
 
+// ===========================================================================
+// CATEGORIES
+//
+// The scope of work is not the same on every job, so the list is yours to
+// change. It is edited in two places, through the same screen:
+//
+//   a project   the phases that job is actually run on. Everyone with access
+//               sees the same list, because they are looking at one job.
+//   the library  your own template, which every new project starts from.
+//
+// Saving happens as you type rather than behind a Save button, because a
+// half-applied rename would leave expenses pointing at a phase that is gone.
+// ===========================================================================
+let categoryScope = null; // a project id, or null for the library
+let editingCategories = [];
+
+async function openCategories(projectId) {
+  categoryScope = projectId || null;
+  catError("");
+  document.getElementById("category-modal-title").textContent = projectId
+    ? "Categories on " + (activeProject() ? activeProject().name : "this project")
+    : "Your Category Library";
+  document.getElementById("category-modal-blurb").textContent = projectId
+    ? "The phases this job is run on. Everyone with access to the project sees this list."
+    : "The list every new project starts from. Nobody else can see it.";
+
+  fillSelect(
+    document.getElementById("cat-new-group"),
+    CATEGORY_GROUPS.map((g) => ({ value: g.key, label: g.label })),
+    "build"
+  );
+  fillSelect(
+    document.getElementById("cat-new-costtype"),
+    COST_TYPES.map((c) => ({ value: c.value, label: c.label })),
+    "Materials"
+  );
+  document.getElementById("cat-new-name").value = "";
+  document.getElementById("category-modal").classList.remove("hidden");
+
+  try {
+    editingCategories = projectId
+      ? allCategories.filter((c) => c.projectId === projectId).slice()
+      : await Store.getCategoryLibrary();
+  } catch (err) {
+    reportError("open your categories", err);
+    return;
+  }
+  renderCategoryEditor();
+}
+
+function closeCategories() {
+  document.getElementById("category-modal").classList.add("hidden");
+  editingCategories = [];
+}
+
+function catError(message) {
+  const el = document.getElementById("cat-error");
+  el.textContent = message || "";
+  el.classList.toggle("cat-error", !!message);
+}
+
+// How many expenses and budget lines are filed under a name, which decides
+// whether it can be deleted and warns what a rename will carry with it.
+function categoryUsage(name) {
+  if (!categoryScope) return 0;
+  return (
+    summaries.filter((e) => e.projectId === categoryScope && e.category === name).length +
+    budgets.filter((b) => b.projectId === categoryScope && b.category === name).length +
+    tasks.filter((t) => t.projectId === categoryScope && t.category === name).length
+  );
+}
+
+function renderCategoryEditor() {
+  const el = document.getElementById("category-editor");
+  if (!editingCategories.length) {
+    el.innerHTML =
+      '<p class="empty">No categories yet. Add the first one below, or restore ' +
+      "the list the app ships with.</p>";
+    return;
+  }
+
+  el.innerHTML = CATEGORY_GROUPS.map((g) => {
+    const rows = editingCategories.filter((c) => c.group === g.key);
+    if (!rows.length) return "";
+    return (
+      '<div class="cat-group">' +
+      "<h4>" + escapeHtml(g.label) + "</h4>" +
+      rows
+        .map((c) => {
+          const used = categoryUsage(c.name);
+          return (
+            '<div class="cat-row" data-cat="' + escapeHtml(c.id) + '">' +
+            '<input type="text" class="cat-name" value="' + escapeHtml(c.name) + '" />' +
+            '<select class="cat-group-pick">' +
+            CATEGORY_GROUPS.map(
+              (o) =>
+                '<option value="' + o.key + '"' +
+                (o.key === c.group ? " selected" : "") +
+                ">" + escapeHtml(o.label) + "</option>"
+            ).join("") +
+            "</select>" +
+            '<select class="cat-cost-pick">' +
+            COST_TYPES.map(
+              (o) =>
+                '<option value="' + o.value + '"' +
+                (o.value === c.defaultCostType ? " selected" : "") +
+                ">" + escapeHtml(o.label) + "</option>"
+            ).join("") +
+            "</select>" +
+            '<span class="cat-used">' + (used ? used + " in use" : "") + "</span>" +
+            '<button type="button" class="icon-btn del cat-del">Remove</button>' +
+            "</div>"
+          );
+        })
+        .join("") +
+      "</div>"
+    );
+  }).join("");
+}
+
+function categoryRowId(ev) {
+  const row = ev.target.closest(".cat-row");
+  return row ? row.dataset.cat : null;
+}
+
+async function saveCategoryEdit(id, changes, renamedFrom) {
+  const current = editingCategories.find((c) => c.id === id);
+  if (!current) return;
+  const next = { ...current, ...changes };
+
+  const clash = editingCategories.some(
+    (c) => c.id !== id && c.name.toLowerCase() === next.name.toLowerCase()
+  );
+  if (clash) {
+    catError("There is already a category called " + next.name + ".");
+    renderCategoryEditor();
+    return;
+  }
+
+  try {
+    // The cascade goes first. If it fails the category keeps its old name and
+    // everything filed under it is still pointing somewhere real.
+    if (renamedFrom && categoryScope) {
+      await Store.renameCategory(categoryScope, renamedFrom, next.name);
+    }
+    const saved = await Store.saveCategory({ ...next, projectId: categoryScope }, id);
+    Object.assign(current, saved);
+    if (renamedFrom && categoryScope) {
+      for (const e of summaries) {
+        if (e.projectId === categoryScope && e.category === renamedFrom) e.category = next.name;
+      }
+      for (const e of expenses) if (e.category === renamedFrom) e.category = next.name;
+      for (const b of budgets) {
+        if (b.projectId === categoryScope && b.category === renamedFrom) b.category = next.name;
+      }
+      for (const t of tasks) {
+        if (t.projectId === categoryScope && t.category === renamedFrom) t.category = next.name;
+      }
+    }
+    afterCategoryChange();
+  } catch (err) {
+    reportError("save that category", err);
+    renderCategoryEditor();
+  }
+}
+
+async function addCategory() {
+  const name = document.getElementById("cat-new-name").value.trim();
+  if (!name) return;
+  if (editingCategories.some((c) => c.name.toLowerCase() === name.toLowerCase())) {
+    catError("There is already a category called " + name + ".");
+    return;
+  }
+  catError("");
+
+  try {
+    const saved = await Store.saveCategory(
+      {
+        projectId: categoryScope,
+        name,
+        group: document.getElementById("cat-new-group").value,
+        defaultCostType: document.getElementById("cat-new-costtype").value,
+        sort: (editingCategories.length + 1) * 10,
+      },
+      null
+    );
+    editingCategories.push(saved);
+    document.getElementById("cat-new-name").value = "";
+    afterCategoryChange();
+  } catch (err) {
+    reportError("add that category", err);
+  }
+}
+
+async function removeCategory(id) {
+  const c = editingCategories.find((x) => x.id === id);
+  if (!c) return;
+
+  const used = categoryUsage(c.name);
+  if (used) {
+    catError(
+      c.name + " cannot be removed: " + used + " " + (used === 1 ? "entry is" : "entries are") +
+      " filed under it. Rename it, or move those over to another category first."
+    );
+    return;
+  }
+  if (!confirm("Remove " + c.name + "?")) return;
+
+  try {
+    await Store.deleteCategory(id);
+    editingCategories = editingCategories.filter((x) => x.id !== id);
+    catError("");
+    afterCategoryChange();
+  } catch (err) {
+    reportError("remove that category", err);
+  }
+}
+
+// Anything the app shipped with that is no longer on the list comes back. It
+// is additive: nothing you renamed or added is touched.
+async function restoreDefaultCategories() {
+  const have = new Set(editingCategories.map((c) => c.name.toLowerCase()));
+  const missing = DEFAULT_CATEGORIES.filter((d) => !have.has(d.name.toLowerCase()));
+  if (!missing.length) {
+    catError("Every default category is already on the list.");
+    return;
+  }
+  catError("");
+
+  try {
+    let sort = editingCategories.length * 10;
+    for (const d of missing) {
+      sort += 10;
+      const saved = await Store.saveCategory({ ...d, projectId: categoryScope, sort }, null);
+      editingCategories.push(saved);
+    }
+    afterCategoryChange();
+  } catch (err) {
+    reportError("restore the default categories", err);
+  }
+}
+
+// A project's list is the one the rest of the page is drawn from, so it has to
+// go back into the shared state and the page redrawn. The library is only a
+// template and changes nothing that is on screen.
+function afterCategoryChange() {
+  if (categoryScope) {
+    allCategories = allCategories
+      .filter((c) => c.projectId !== categoryScope)
+      .concat(editingCategories);
+    if (categoryScope === activeProjectId) {
+      setActiveCategories(editingCategories);
+      renderProject();
+    }
+  }
+  editingCategories.sort((a, b) => (a.sort || 0) - (b.sort || 0));
+  renderCategoryEditor();
+}
+
 function renderContractorList() {
   const el = document.getElementById("contractor-list");
   if (!contractors.length) {
@@ -2633,14 +2906,12 @@ function closeProjectModal() {
 
 // Asking for a lender, a note amount and a holdback on a deal you paid for
 // yourself is three questions with no answer. Put them away instead.
-function syncFundingFields() {
-  const cash = document.getElementById("pr-funding").value === "cash";
+function syncFundingFields() {  const cash = document.getElementById("pr-funding").value === "cash";
   document.getElementById("pr-loan-fields").classList.toggle("hidden", cash);
   document.getElementById("pr-cash-hint").classList.toggle("hidden", !cash);
 }
 
-function renderPartnerEditor() {
-  const el = document.getElementById("pr-partners");
+function renderPartnerEditor() {  const el = document.getElementById("pr-partners");
   el.innerHTML = pendingPartners
     .map(
       (p, i) =>
@@ -2726,6 +2997,7 @@ async function saveProjectFromForm() {
 
     await syncPartners(saved.id);
     if (!id) memberships = await Store.getMemberships();
+    if (!id) await seedProjectCategories(saved.id);
   } catch (err) {
     reportError("save this project", err);
     return;
@@ -2738,6 +3010,23 @@ async function saveProjectFromForm() {
   } else {
     goProject(saved.id);
   }
+}
+
+// A new project is started from your own library. The first time round that
+// library is empty, so it starts from the list the app ships with.
+async function seedProjectCategories(projectId) {
+  let library = [];
+  try {
+    library = await Store.getCategoryLibrary();
+  } catch (err) {
+    // A library that will not load is not worth losing a new project over.
+    console.warn("[app] could not read the category library", err);
+  }
+  const made = await Store.seedCategories(
+    projectId,
+    library.length ? library : DEFAULT_CATEGORIES
+  );
+  allCategories = allCategories.concat(made);
 }
 
 // Reconcile the partner rows in the editor against what is stored.
@@ -3393,6 +3682,45 @@ document.querySelectorAll("#contractor-modal .tab").forEach((t) =>
 document.querySelectorAll("#project-tabs .tab").forEach((t) =>
   t.addEventListener("click", () => showProjectTab(t.dataset.ptab))
 );
+
+document.getElementById("library-btn").addEventListener("click", () => openCategories(null));
+document.getElementById("categories-btn").addEventListener("click", () =>
+  openCategories(activeProjectId)
+);
+document.getElementById("cat-close").addEventListener("click", closeCategories);
+document.getElementById("cat-add-btn").addEventListener("click", addCategory);
+document.getElementById("cat-restore").addEventListener("click", restoreDefaultCategories);
+document.getElementById("cat-new-name").addEventListener("keydown", (ev) => {
+  if (ev.key === "Enter") {
+    ev.preventDefault();
+    addCategory();
+  }
+});
+
+// One listener for the whole editor: the rows are redrawn constantly and
+// re-binding a handler per row per redraw is how you end up firing twice.
+document.getElementById("category-editor").addEventListener("change", (ev) => {
+  const id = categoryRowId(ev);
+  if (!id) return;
+  const was = editingCategories.find((c) => c.id === id);
+  if (ev.target.classList.contains("cat-name")) {
+    const name = ev.target.value.trim();
+    if (!name || name === was.name) {
+      renderCategoryEditor();
+      return;
+    }
+    saveCategoryEdit(id, { name }, was.name);
+  } else if (ev.target.classList.contains("cat-group-pick")) {
+    saveCategoryEdit(id, { group: ev.target.value }, null);
+  } else if (ev.target.classList.contains("cat-cost-pick")) {
+    saveCategoryEdit(id, { defaultCostType: ev.target.value }, null);
+  }
+});
+document.getElementById("category-editor").addEventListener("click", (ev) => {
+  if (!ev.target.classList.contains("cat-del")) return;
+  const id = categoryRowId(ev);
+  if (id) removeCategory(id);
+});
 document.getElementById("add-contractor-btn").addEventListener("click", () => openContractorEdit(null));
 document.getElementById("tax-year").addEventListener("change", renderTaxList);
 document.getElementById("tax-export-btn").addEventListener("click", exportTaxCsv);
@@ -3593,7 +3921,7 @@ function fillStaticSelects() {
 
 async function loadAll() {
   try {
-    [projects, partners, memberships, contractors, budgets, tasks, summaries, allDraws] = await Promise.all([
+    [projects, partners, memberships, contractors, budgets, tasks, summaries, allDraws, allCategories] = await Promise.all([
       Store.getProjects(),
       Store.getPartners(),
       Store.getMemberships(),
@@ -3602,6 +3930,7 @@ async function loadAll() {
       Store.getTasks(null),
       Store.getExpenseSummaries(),
       Store.getDraws(null),
+      Store.getCategories(null),
     ]);
     snapshotNow();
   } catch (err) {

@@ -913,6 +913,42 @@ tbody td { padding: 10px 12px; font-size: 14px; border-bottom: 1px solid var(--l
 .tab-toolbar { display: flex; align-items: center; gap: 12px; margin-bottom: 12px; }
 .tab-toolbar .spacer { flex: 1; }
 
+/* ---------- Category editor ---------- */
+.cat-group { margin-bottom: 18px; }
+.cat-group h4 {
+  margin: 0 0 8px;
+  font-size: 12px;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--muted);
+}
+.cat-row {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  padding: 6px 0;
+  border-bottom: 1px solid var(--line);
+}
+.cat-row .cat-name { flex: 1 1 auto; min-width: 0; }
+.cat-row .cat-group-pick { flex: 0 0 168px; }
+.cat-row .cat-cost-pick { flex: 0 0 176px; }
+.cat-used {
+  flex: 0 0 68px;
+  font-size: 11px;
+  color: var(--muted);
+  text-align: right;
+}
+.cat-add {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  margin-top: 16px;
+  padding-top: 16px;
+  border-top: 1px solid var(--line);
+}
+.cat-add #cat-new-name { flex: 1 1 auto; min-width: 0; }
+.cat-error { color: var(--danger); font-weight: 600; }
+
 .contractor-row {
   display: flex;
   align-items: center;

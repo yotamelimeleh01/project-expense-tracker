@@ -279,6 +279,8 @@ Open **SQL Editor → New query** and run these in order:
    new project be created and read back in the same breath
 9. [`supabase-phase8-funding.sql`](supabase-phase8-funding.sql) — marks a deal as
    financed or paid for in cash
+10. [`supabase-phase8-categories.sql`](supabase-phase8-categories.sql) — moves the
+    scope of work into the database so you can edit it
 
 Every script after the first is additive and safe to re-run. On an existing
 database they move what you already have onto the new shape rather than
