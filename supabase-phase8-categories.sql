@@ -102,12 +102,21 @@ select gen_random_uuid()::text, p.id, d.name, d.group_key, d.cost_type, d.sort
 -- ---------------------------------------------------------------------------
 -- Anything already filed under a name that is not in the list gets a home
 -- rather than disappearing from the budget sheet. This catches categories that
--- arrived on an expense before this table existed.
+-- arrived on an expense, a budget line or a schedule phase before this table
+-- existed.
 -- ---------------------------------------------------------------------------
 insert into public.categories (id, project_id, name, group_key, default_cost_type, sort)
 select gen_random_uuid()::text, e.project_id, e.category, 'build', 'Other', 900
-  from (select distinct project_id, category from public.expenses
-         where category is not null and category <> '') e
+  from (
+        select distinct project_id, category from public.expenses
+         where category is not null and category <> ''
+        union
+        select distinct project_id, category from public.budget_lines
+         where category is not null and category <> ''
+        union
+        select distinct project_id, category from public.tasks
+         where category is not null and category <> ''
+       ) e
  where not exists (
    select 1 from public.categories c
     where c.project_id = e.project_id and c.name = e.category
