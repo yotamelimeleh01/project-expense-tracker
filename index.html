@@ -355,21 +355,33 @@
           </label>
         </div>
 
-        <h3 class="form-section">The Loan</h3>
+        <h3 class="form-section">The Money</h3>
         <div class="form-grid">
-          <label class="full">Lender
-            <input type="text" id="pr-lender" placeholder="e.g. National Loan Funding LLC" />
-          </label>
-          <label>Total Note Amount ($)
-            <input type="number" id="pr-loan" step="0.01" min="0" value="0" />
-          </label>
-          <label>Construction Holdback ($)
-            <input type="number" id="pr-holdback" step="0.01" min="0" value="0" />
+          <label class="full">How is this deal paid for?
+            <select id="pr-funding"></select>
           </label>
         </div>
-        <p class="form-hint">
-          Funded at closing = note amount minus holdback. That funded amount counts
-          toward your all-in; the holdback only counts as you draw it.
+
+        <div id="pr-loan-fields">
+          <div class="form-grid">
+            <label class="full">Lender
+              <input type="text" id="pr-lender" placeholder="e.g. National Loan Funding LLC" />
+            </label>
+            <label>Total Note Amount ($)
+              <input type="number" id="pr-loan" step="0.01" min="0" value="0" />
+            </label>
+            <label>Construction Holdback ($)
+              <input type="number" id="pr-holdback" step="0.01" min="0" value="0" />
+            </label>
+          </div>
+          <p class="form-hint">
+            Funded at closing = note amount minus holdback. That funded amount counts
+            toward your all-in; the holdback only counts as you draw it.
+          </p>
+        </div>
+        <p class="form-hint hidden" id="pr-cash-hint">
+          Every dollar in this deal is your own, so the all-in is simply what you
+          have spent. Loan, draw and payoff figures are put away.
         </p>
 
         <h3 class="form-section">Partners <span class="form-sub">whose money is in this deal</span></h3>

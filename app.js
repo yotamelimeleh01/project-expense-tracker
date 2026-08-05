@@ -579,7 +579,9 @@ function renderDashboard() {
         '<div class="pc-allin"><span>All-in</span><strong>' + money(n.allIn) + "</strong></div>" +
         '<div class="pc-rows">' +
         '<div class="pc-row"><span>Partner cash</span><strong>' + money(n.partnerCash) + "</strong></div>" +
-        '<div class="pc-row"><span>Lender payoff</span><strong>' + money(n.payoff) + "</strong></div>" +
+        (isFinanced(p)
+          ? '<div class="pc-row"><span>Lender payoff</span><strong>' + money(n.payoff) + "</strong></div>"
+          : '<div class="pc-row"><span>Funding</span><strong>Cash</strong></div>') +
         budgetRow +
         scheduleRow +
         profitRow +
@@ -692,10 +694,11 @@ function renderAllIn(p) {
       "counted above. They do raise the lender payoff below.</span>"
     : "";
 
-  document.getElementById("allin-breakdown").innerHTML =
-    "Partner cash <strong>" + money(n.partnerCash) + "</strong>" +
-    " &nbsp;+&nbsp; Lender funded at closing <strong>" + money(n.funded) + "</strong>" +
-    drawNote;
+  document.getElementById("allin-breakdown").innerHTML = isFinanced(p)
+    ? "Partner cash <strong>" + money(n.partnerCash) + "</strong>" +
+      " &nbsp;+&nbsp; Lender funded at closing <strong>" + money(n.funded) + "</strong>" +
+      drawNote
+    : "Paid for in cash \u2014 every dollar here is your own.";
 }
 
 function renderProfit(p) {
@@ -838,7 +841,7 @@ function breakdownGroups(p) {
         amount: sum(expenses.filter((e) => e.category === name)),
       }))
       .filter((l) => l.amount !== 0);
-    if (g.includeLoanFunded) {
+    if (g.includeLoanFunded && funded !== 0) {
       lines.push({ label: "Lender principal funded at closing", amount: funded, lender: true });
     }
     return { ...g, lines, total: lines.reduce((s, l) => s + l.amount, 0) };
@@ -1271,6 +1274,11 @@ async function deleteTaskFromForm() {
 
 // ---------- Loan payoff ----------
 function renderLoan(p) {
+  // A cash deal has no note, no holdback and nothing to pay off, so the whole
+  // panel goes away rather than sitting there full of zeros.
+  document.querySelector(".loan-panel").classList.toggle("hidden", !isFinanced(p));
+  if (!isFinanced(p)) return;
+
   const n = loanNumbers(p, draws);
   document.getElementById("loan-lender").textContent = p.lender
     ? p.lender + " \u00b7 Note " + money(p.loanAmount)
@@ -2578,6 +2586,13 @@ function openProjectModal(id) {
     existing ? existing.status : "before_closing"
   );
 
+  fillSelect(
+    document.getElementById("pr-funding"),
+    FUNDING_TYPES.map((f) => ({ value: f.value, label: f.label })),
+    existing ? existing.funding : "financed"
+  );
+  syncFundingFields();
+
   pendingPartners = existing
     ? partnersOf(existing.id).map((p) => ({ id: p.id, name: p.name, equityPct: p.equityPct }))
     : DEFAULT_PARTNER_NAMES.map((name) => ({ id: null, name, equityPct: 0 }));
@@ -2591,6 +2606,14 @@ function openProjectModal(id) {
 function closeProjectModal() {
   document.getElementById("project-modal").classList.add("hidden");
   pendingPartners = [];
+}
+
+// Asking for a lender, a note amount and a holdback on a deal you paid for
+// yourself is three questions with no answer. Put them away instead.
+function syncFundingFields() {
+  const cash = document.getElementById("pr-funding").value === "cash";
+  document.getElementById("pr-loan-fields").classList.toggle("hidden", cash);
+  document.getElementById("pr-cash-hint").classList.toggle("hidden", !cash);
 }
 
 function renderPartnerEditor() {
@@ -2640,16 +2663,19 @@ async function saveProjectFromForm() {
   const id = document.getElementById("pr-id").value;
   const saleRaw = document.getElementById("pr-sale").value;
   const purchaseRaw = document.getElementById("pr-purchase").value;
+  const funding = document.getElementById("pr-funding").value === "cash" ? "cash" : "financed";
+  const financed = funding === "financed";
 
   const record = {
     name: document.getElementById("pr-name").value.trim(),
     address: document.getElementById("pr-address").value.trim(),
     status: document.getElementById("pr-status").value,
+    funding,
     borrower: document.getElementById("pr-borrower").value.trim(),
-    lender: document.getElementById("pr-lender").value.trim(),
+    lender: financed ? document.getElementById("pr-lender").value.trim() : "",
     settlementDate: document.getElementById("pr-settlement").value,
-    loanAmount: parseFloat(document.getElementById("pr-loan").value) || 0,
-    loanHoldback: parseFloat(document.getElementById("pr-holdback").value) || 0,
+    loanAmount: financed ? parseFloat(document.getElementById("pr-loan").value) || 0 : 0,
+    loanHoldback: financed ? parseFloat(document.getElementById("pr-holdback").value) || 0 : 0,
     purchasePrice: purchaseRaw === "" ? null : parseFloat(purchaseRaw),
     salePrice: saleRaw === "" ? null : parseFloat(saleRaw),
     saleDate: document.getElementById("pr-saledate").value,
@@ -3371,6 +3397,7 @@ document.getElementById("project-form").addEventListener("submit", (ev) => {
   saveProjectFromForm();
 });
 document.getElementById("pr-cancel").addEventListener("click", closeProjectModal);
+document.getElementById("pr-funding").addEventListener("change", syncFundingFields);
 document.getElementById("pr-delete").addEventListener("click", deleteActiveProject);
 document.getElementById("pr-add-partner").addEventListener("click", () => {
   pendingPartners.push({ id: null, name: "", equityPct: 0 });

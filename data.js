@@ -20,6 +20,17 @@ function statusLabel(value) {
   return s ? s.label : "Before Closing";
 }
 
+// Where the money for the deal came from. A cash purchase has no lender, no
+// note and no holdback, so every loan figure and panel is beside the point.
+const FUNDING_TYPES = [
+  { value: "financed", label: "Financed \u2014 a lender is in the deal" },
+  { value: "cash", label: "Cash out of pocket \u2014 no lender" },
+];
+
+function isFinanced(project) {
+  return !project || project.funding !== "cash";
+}
+
 // ---------------------------------------------------------------------------
 // Categories.
 //
