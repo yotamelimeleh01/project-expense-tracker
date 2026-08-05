@@ -275,6 +275,8 @@ Open **SQL Editor → New query** and run these in order:
    equity percentages, preferred return, and read-only share links
 7. [`supabase-phase5-schedule.sql`](supabase-phase5-schedule.sql) — the schedule
    table, trade dependencies, and the schedule switch on share links
+8. [`supabase-fix-project-create.sql`](supabase-fix-project-create.sql) — lets a
+   new project be created and read back in the same breath
 
 Every script after the first is additive and safe to re-run. On an existing
 database they move what you already have onto the new shape rather than
@@ -350,7 +352,7 @@ setup steps forgot to mention, a secret key in `config.js`.
 | `ocr.js` | reading a receipt photo into an amount, a date and a vendor |
 | `app.js` | state, the sums, and every screen |
 | `sw.js` `manifest.webmanifest` `icons/` | what makes it installable and offline |
-| `supabase-*.sql` | the seven migrations, run in order |
+| `supabase-*.sql` | the migrations, run in order |
 | `tools/check.js` | the pre-flight check |
 | `tools/make-icons.js` | regenerates the app icons, no dependencies |
 

@@ -1366,8 +1366,12 @@ tbody td { padding: 10px 12px; font-size: 14px; border-bottom: 1px solid var(--l
   .bedit-row { flex-wrap: wrap; gap: 8px; }
   .bedit-row input { width: 100%; }
   .drawreq-controls input[type="number"] { width: 100%; }
+  /* The name gets a line of its own; the percentage, its sign and Remove
+     share the next one. */
   .partner-row { flex-wrap: wrap; }
-  .partner-row input { flex: 1 1 100%; }
+  .partner-row input[type="text"] { flex: 1 1 100%; }
+  .partner-row .equity-input { flex: 0 0 84px; }
+  .partner-row .icon-btn { margin-left: auto; }
   .member-row, .link-row, .contractor-row, .compliance-alert { flex-wrap: wrap; }
   .cr-side { width: 100%; justify-content: flex-start; flex-wrap: wrap; }
 
