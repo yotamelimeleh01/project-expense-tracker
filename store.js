@@ -15,6 +15,45 @@ function newId() {
   return Date.now().toString(36) + Math.random().toString(36).slice(2, 10);
 }
 
+// The login token is a plain JSON payload in the middle of the string. Reading
+// it is not a security check — the database re-checks the signature — it only
+// lets us tell the difference between "you are not allowed" and "log in again".
+function readToken(token) {
+  if (!token || typeof token !== "string") return null;
+  try {
+    const body = token.split(".")[1];
+    if (!body) return null;
+    return JSON.parse(atob(body.replace(/-/g, "+").replace(/_/g, "/")));
+  } catch (e) {
+    return null;
+  }
+}
+
+// Postgres refuses a blocked insert with "new row violates row-level security
+// policy", which is accurate and tells you nothing. There are only three ways to
+// get there, and the login token says which one it was.
+function explainDenial(error, session, row) {
+  if (!error || error.code !== "42501") return error;
+  const claims = readToken(session && session.access_token);
+  let why;
+  if (!claims || claims.role !== "authenticated") {
+    why =
+      "The database did not see a signed-in user on this request (it saw \"" +
+      ((claims && claims.role) || "nobody") +
+      "\"). Sign out and sign back in.";
+  } else if (row && row.created_by && claims.sub !== row.created_by) {
+    why = "The row was stamped with a different account than the one you are signed in as.";
+  } else {
+    why =
+      "You are signed in correctly, so the database is missing the rule that lets a " +
+      "signed-in user create a project. Run supabase-fix-project-create.sql in the " +
+      "Supabase SQL editor.";
+  }
+  const explained = new Error(error.message + "\n\n" + why);
+  explained.code = error.code;
+  return explained;
+}
+
 const Store = {
   client: null,
   ready: false,
@@ -68,10 +107,26 @@ const Store = {
   async requireSession() {
     for (let attempt = 0; attempt < 20; attempt++) {
       const { data } = await this.client.auth.getSession();
-      if (data.session) return data.session;
+      if (data.session) return this.freshen(data.session);
       await new Promise((r) => setTimeout(r, 100));
     }
     throw new Error("Not signed in \u2014 could not reach your data.");
+  },
+
+  // A login that lapses mid-request comes back from the database as a permission
+  // error, which reads like "you are not allowed to do this" rather than "your
+  // session ran out". Renew it a minute early instead of finding out the hard way.
+  async freshen(session) {
+    if (!session.expires_at || typeof this.client.auth.refreshSession !== "function") {
+      return session;
+    }
+    if (session.expires_at * 1000 - Date.now() > 60000) return session;
+    try {
+      const { data } = await this.client.auth.refreshSession();
+      return (data && data.session) || session;
+    } catch (e) {
+      return session;
+    }
   },
 
   async select(table, columns, build) {
@@ -215,7 +270,7 @@ const Store = {
     }
     row.created_by = session.user.id;
     const { data, error } = await this.client.from("projects").insert(row).select().single();
-    if (error) throw error;
+    if (error) throw explainDenial(error, session, row);
     return projectFromRow(data);
   },
 
