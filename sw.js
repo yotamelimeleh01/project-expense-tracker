@@ -8,7 +8,7 @@
 //
 // Bump CACHE whenever the shell changes. Old caches are deleted on activate,
 // so a stale version cannot outlive a deploy.
-const CACHE = "pet-shell-v8";
+const CACHE = "pet-shell-v9";
 
 const SHELL = [
   "./",

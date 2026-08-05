@@ -1260,3 +1260,139 @@ tbody td { padding: 10px 12px; font-size: 14px; border-bottom: 1px solid var(--l
   text-decoration: underline;
   cursor: pointer;
 }
+
+/* ---------- Phones ----------
+   Nothing below changes what the app says, only how much of it fits at once.
+   One rule throughout: no single element gets to decide the width of the page.
+   Wide things wrap, shrink, or scroll sideways inside their own box. */
+
+@media (max-width: 760px) {
+  /* One stray wide child used to drag the whole page off to the right. */
+  html, body { overflow-x: hidden; }
+
+  /* Generous padding costs a fifth of a phone screen. Take some of it back. */
+  .topbar-inner { padding: 16px 14px; }
+  .container { padding: 16px 14px 30px; }
+  .footer { padding: 0 14px; }
+
+  .topbar h1 { font-size: 21px; }
+  .subtitle { font-size: 13px; margin-bottom: 10px; }
+  .brand-row { gap: 12px; }
+  .auth-row { flex-wrap: wrap; gap: 8px; width: 100%; }
+  .auth-status { flex-basis: 100%; }
+  .meta-row { gap: 6px 18px; font-size: 12px; }
+  .crumbs { flex-wrap: wrap; margin-top: 12px; }
+
+  /* Any field under 16px makes iOS zoom in when it gets focus, and the page
+     never quite comes back. The nested `font: inherit` rules were quietly
+     handing labels' 12px straight down to the inputs. */
+  input, select, textarea { font-size: 16px; }
+  .btn { font-size: 14px; padding: 9px 13px; }
+  .btn-small { font-size: 13px; padding: 6px 10px; }
+  .btn-ghost { font-size: 13px; }
+
+  /* One long <option> is enough to push a 1fr grid track wider than the phone
+     and take the whole form with it. minmax(0, ...) tells the track to size
+     itself on the space available rather than on its widest child. */
+  .form-grid { gap: 12px; grid-template-columns: minmax(0, 1fr); }
+  .form-grid > * { min-width: 0; }
+  .form-grid input, .form-grid select, .form-grid textarea { max-width: 100%; }
+
+  /* Panels: tighter, and a table too wide to fit scrolls sideways inside its
+     own panel rather than stretching everything else out with it. */
+  .breakdown, .loan-panel, .profit-panel, .budget-panel, .split-panel,
+  .schedule-panel, .ledger-panel { padding: 15px 14px; }
+  .budget-panel, .split-panel, .ledger-panel, .group-block {
+    overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
+  }
+  .split-table, .budget-table, .tax-table { font-size: 12px; }
+  .split-table th, .split-table td,
+  .budget-table th, .budget-table td,
+  .tax-table th, .tax-table td { padding: 7px 6px; }
+  thead th { padding: 8px 8px; }
+  tbody td { padding: 9px 8px; font-size: 13px; }
+  .bbar-col { width: 86px; }
+  .bbar { min-width: 40px; }
+  .bpct { display: none; }
+
+  /* A seven-figure number must not set the width of the page either. */
+  .allin { padding: 20px 14px 18px; }
+  .allin-value { font-size: 34px; letter-spacing: -0.5px; }
+  .portfolio { padding: 18px 14px; gap: 16px; }
+  .card-value { font-size: 22px; }
+  .pc-allin strong { font-size: 21px; }
+  .bsum strong { font-size: 17px; }
+  .drawreq-total strong { font-size: 19px; }
+  .budget-editor-total strong { font-size: 18px; }
+
+  /* Long words with nowhere to break: emails, addresses, share links. */
+  .pc-address, .project-address, .member-email, .link-label, .link-sub,
+  .cr-sub, .row-notes, .share-banner, .sl-result { overflow-wrap: anywhere; }
+
+  /* Toolbars: buttons share the row instead of running off the end of it. */
+  .toolbar, .tab-toolbar, .project-head-actions, .loan-draw-actions,
+  .drawreq-controls, .budget-head-right, .breakdown-head, .loan-head,
+  .loan-draws-head, .group-head, .sync-bar, .scan-status { flex-wrap: wrap; }
+  .toolbar .spacer, .tab-toolbar .spacer { display: none; }
+  .toolbar .btn, .tab-toolbar .btn { flex: 1 1 auto; }
+  .group-label { flex: 1 1 100%; }
+  .group-label select { flex: 1; min-width: 0; }
+
+  /* Tabs stay on one line and scroll. Wrapping them breaks the underline. */
+  .tabs { overflow-x: auto; }
+  .tab { flex: none; padding: 8px 11px; }
+
+  .project-head { gap: 12px; }
+  .project-head h2 { font-size: 20px; }
+
+  /* Modals start at the top of the screen so the on-screen keyboard has
+     somewhere to go. dvh, not vh, or the browser's own chrome eats the
+     Save button on the way past. */
+  .modal-overlay { padding: 10px; align-items: flex-start; }
+  .modal {
+    padding: 18px 16px;
+    max-height: calc(100vh - 20px);
+    max-height: calc(100dvh - 20px);
+  }
+  .modal h2 { font-size: 18px; }
+  .modal-actions { gap: 8px; flex-wrap: wrap; }
+  .modal-actions .btn { flex: 1 1 auto; }
+
+  /* Fields with a fixed width, now that the text inside them is bigger. */
+  .equity-input { width: 64px; }
+  .threshold-field { flex-wrap: wrap; }
+  .threshold-field input { width: 64px; }
+  .bedit-row { flex-wrap: wrap; gap: 8px; }
+  .bedit-row input { width: 100%; }
+  .drawreq-controls input[type="number"] { width: 100%; }
+  .partner-row { flex-wrap: wrap; }
+  .partner-row input { flex: 1 1 100%; }
+  .member-row, .link-row, .contractor-row, .compliance-alert { flex-wrap: wrap; }
+  .cr-side { width: 100%; justify-content: flex-start; flex-wrap: wrap; }
+
+  /* Picking expenses for a draw request. */
+  .drawreq-row {
+    grid-template-columns: 18px 62px 1fr auto;
+    gap: 8px;
+    padding: 8px 8px;
+    font-size: 12px;
+  }
+  .dr-date { font-size: 11px; }
+}
+
+@media (max-width: 420px) {
+  .topbar-inner, .container, .footer { padding-left: 11px; padding-right: 11px; }
+  .allin-value { font-size: 29px; }
+  .card-value { font-size: 20px; }
+
+  /* A 280px minimum track overflows a 320px phone once padding is paid for. */
+  .project-grid { grid-template-columns: 1fr; }
+  .portfolio-stats, .budget-summary { grid-template-columns: 1fr 1fr; }
+
+  .gantt-row { grid-template-columns: 96px 1fr 58px; gap: 6px; }
+  .g-now { left: 102px; right: 64px; }
+  .g-state { gap: 4px; }
+  .sched { font-size: 0.6rem; padding: 2px 5px; }
+  .tab { padding: 8px 9px; font-size: 12px; }
+}
