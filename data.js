@@ -31,6 +31,31 @@ function isFinanced(project) {
   return !project || project.funding !== "cash";
 }
 
+// The paperwork a deal throws off. This list is fixed on purpose: the whole
+// value of it is that the contract is filed in the same place on every job,
+// so you know where to look a year later without remembering anything.
+const DOCUMENT_KINDS = [
+  "Purchase Contract",
+  "ALTA / Settlement Statement",
+  "Deed & Title",
+  "Loan Documents",
+  "Insurance",
+  "Permits",
+  "Inspection & Appraisal",
+  "Scope & Bids",
+  "Invoices & Lien Releases",
+  "Listing & Sale",
+  "Other",
+];
+
+// Bytes are how a computer thinks about a file. This is how a person does.
+function fileSize(bytes) {
+  const n = Number(bytes) || 0;
+  if (n < 1024) return n + " B";
+  if (n < 1024 * 1024) return Math.round(n / 1024) + " KB";
+  return (n / (1024 * 1024)).toFixed(n < 10 * 1024 * 1024 ? 1 : 0) + " MB";
+}
+
 // ---------------------------------------------------------------------------
 // Categories.
 //

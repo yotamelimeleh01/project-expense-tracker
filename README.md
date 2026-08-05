@@ -281,6 +281,8 @@ Open **SQL Editor → New query** and run these in order:
    financed or paid for in cash
 10. [`supabase-phase8-categories.sql`](supabase-phase8-categories.sql) — moves the
     scope of work into the database so you can edit it
+11. [`supabase-phase8-documents.sql`](supabase-phase8-documents.sql) — files the
+    contract, the ALTA and the permits on the project
 
 Every script after the first is additive and safe to re-run. On an existing
 database they move what you already have onto the new shape rather than

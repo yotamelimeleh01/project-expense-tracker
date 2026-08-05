@@ -10,6 +10,7 @@ let tasks = [];          // schedule phases for every project you can see
 let summaries = [];      // lightweight expense rows for every project
 let allDraws = [];       // draw rows for every project
 let allCategories = [];  // the scope of work for every project you can see
+let allDocs = [];        // the paperwork filed against every project you can see
 
 let expenses = [];       // full rows (with receipts) for the open project
 let draws = [];          // draw rows for the open project
@@ -479,7 +480,7 @@ function goProject(id) {
 // phone the schedule sat four screens below the number you opened the app for.
 // The tab survives a re-render on purpose: adding an expense must not throw you
 // back to the overview halfway through a stack of receipts.
-const PROJECT_TABS = ["overview", "expenses", "budget", "schedule", "loan"];
+const PROJECT_TABS = ["overview", "expenses", "budget", "schedule", "documents", "loan"];
 let projectTab = "overview";
 
 function showProjectTab(name) {
@@ -709,6 +710,7 @@ function renderProject() {
   renderSplit(p);
   renderBudget(p);
   renderSchedule(p);
+  renderDocuments(p);
   renderBreakdown(p);
   renderLoan(p);
   renderGroups();
@@ -1302,6 +1304,197 @@ async function deleteTaskFromForm() {
   }
 }
 
+// ---------- Documents ----------
+// A deal generates a stack of paper: the contract, the ALTA, the deed, the
+// permits, the payoff letter. They normally live in email, which means that a
+// year later nobody can find them. Here they live on the deal.
+let editingDocId = null;
+
+function projectDocs(projectId) {
+  return allDocs.filter((d) => d.projectId === projectId);
+}
+
+function renderDocuments(p) {
+  const mine = projectDocs(p.id);
+  const editable = canEdit(p.id);
+  document.getElementById("add-doc-btn").classList.toggle("hidden", !editable);
+  document.getElementById("docs-health").textContent = mine.length
+    ? mine.length + (mine.length === 1 ? " file" : " files")
+    : "";
+
+  const box = document.getElementById("docs-list");
+  if (!mine.length) {
+    box.innerHTML =
+      '<p class="empty">Nothing filed yet. The contract, the ALTA, the permits ' +
+      "\u2014 put them here and they are with the deal wherever you open it.</p>";
+    document.getElementById("docs-note").textContent = "";
+    return;
+  }
+
+  // Grouped by what a thing is rather than when it arrived, because that is
+  // how you look for it: you want "the ALTA", not "the file from March".
+  const order = DOCUMENT_KINDS.filter((k) => mine.some((d) => d.kind === k));
+  const loose = mine.filter((d) => !DOCUMENT_KINDS.includes(d.kind));
+  box.innerHTML =
+    order
+      .map((kind) => docGroupHtml(kind, mine.filter((d) => d.kind === kind), editable))
+      .join("") + (loose.length ? docGroupHtml("Other", loose, editable) : "");
+
+  const bytes = mine.reduce((sum, d) => sum + (d.size || 0), 0);
+  document.getElementById("docs-note").textContent =
+    "Held privately \u2014 only people on this project can open them. " +
+    fileSize(bytes) + " in total.";
+}
+
+function docGroupHtml(kind, list, editable) {
+  return (
+    '<div class="doc-group"><h4>' + escapeHtml(kind) + "</h4>" +
+    list
+      .map(
+        (d) =>
+          '<div class="doc-row" data-doc="' + escapeHtml(d.id) + '">' +
+          '<button type="button" class="doc-open" data-act="open">' +
+          escapeHtml(d.name) + "</button>" +
+          '<span class="doc-meta">' + escapeHtml(fileSize(d.size)) +
+          (d.createdAt ? " \u00b7 " + escapeHtml(String(d.createdAt).slice(0, 10)) : "") +
+          "</span>" +
+          (d.note ? '<span class="doc-note">' + escapeHtml(d.note) + "</span>" : "") +
+          (editable
+            ? '<button type="button" class="btn btn-small" data-act="edit">Rename</button>' +
+              '<button type="button" class="btn btn-small btn-danger" data-act="delete">Delete</button>'
+            : "") +
+          "</div>"
+      )
+      .join("") +
+    "</div>"
+  );
+}
+
+function docError(message) {
+  const el = document.getElementById("doc-error");
+  el.textContent = message || "";
+  el.classList.toggle("cat-error", !!message);
+}
+
+function openDocModal(docId) {
+  const p = activeProject();
+  if (!p || !canEdit(p.id)) return;
+  const doc = docId ? allDocs.find((d) => d.id === docId) : null;
+  editingDocId = doc ? doc.id : null;
+
+  fillSelect(
+    document.getElementById("doc-kind"),
+    DOCUMENT_KINDS.map((k) => ({ value: k, label: k })),
+    doc ? doc.kind : DOCUMENT_KINDS[0]
+  );
+  document.getElementById("doc-name").value = doc ? doc.name : "";
+  document.getElementById("doc-note").value = doc ? doc.note : "";
+  document.getElementById("doc-file").value = "";
+  // The file itself cannot be swapped out from under a name. Delete it and
+  // upload again if it was the wrong file; that way the old one really goes.
+  document.getElementById("doc-file").closest(".field").classList.toggle("hidden", !!doc);
+  document.getElementById("doc-modal-title").textContent = doc
+    ? "Rename a Document"
+    : "Add a Document";
+  docError("");
+  document.getElementById("doc-modal").classList.remove("hidden");
+}
+
+function closeDocModal() {
+  document.getElementById("doc-modal").classList.add("hidden");
+  editingDocId = null;
+}
+
+async function saveDocFromForm() {
+  const p = activeProject();
+  if (!p) return;
+  const kind = document.getElementById("doc-kind").value;
+  const note = document.getElementById("doc-note").value.trim();
+  const typed = document.getElementById("doc-name").value.trim();
+  const file = (document.getElementById("doc-file").files || [])[0];
+
+  if (editingDocId) {
+    const existing = allDocs.find((d) => d.id === editingDocId);
+    if (!existing) return closeDocModal();
+    if (!typed) return docError("Give it a name so you can find it again.");
+    try {
+      const saved = await Store.saveDocument(
+        { ...existing, name: typed, kind, note },
+        existing.id
+      );
+      allDocs = allDocs.map((d) => (d.id === saved.id ? saved : d));
+      closeDocModal();
+      renderProject();
+    } catch (err) {
+      docError(err.message || "Could not save that.");
+    }
+    return;
+  }
+
+  if (!file) return docError("Choose a file first.");
+  // The row carries the id so the file can be filed under it before either
+  // exists. If the upload fails there is no orphaned row to clean up.
+  const id = Store.newId();
+  const save = document.getElementById("doc-save");
+  save.disabled = true;
+  save.textContent = "Uploading\u2026";
+  try {
+    const path = await Store.uploadDocument(p.id, id, file);
+    const saved = await Store.saveDocument(
+      {
+        projectId: p.id,
+        name: typed || file.name,
+        kind,
+        path,
+        size: file.size || 0,
+        mime: file.type || "",
+        note,
+      },
+      id
+    );
+    allDocs = [saved, ...allDocs];
+    closeDocModal();
+    renderProject();
+  } catch (err) {
+    docError(err.message || "Could not upload that.");
+  } finally {
+    save.disabled = false;
+    save.textContent = "Save";
+  }
+}
+
+// Nothing in the bucket is readable without a signed link, so opening one is a
+// round trip. The window is opened first and pointed afterwards, because a
+// browser only trusts a new tab that was opened during the click itself.
+async function openDocument(id) {
+  const doc = allDocs.find((d) => d.id === id);
+  if (!doc) return;
+  const tab = window.open("", "_blank", "noopener");
+  try {
+    const urls = await Store.signDocuments([doc.path], 3600);
+    const url = urls[doc.path];
+    if (!url) throw new Error("That file is no longer in storage.");
+    if (tab) tab.location = url;
+    else window.location = url;
+  } catch (err) {
+    if (tab) tab.close();
+    reportError("open that document", err);
+  }
+}
+
+async function deleteDocument(id) {
+  const doc = allDocs.find((d) => d.id === id);
+  if (!doc) return;
+  if (!confirm('Delete "' + doc.name + '"? The file goes with it.')) return;
+  try {
+    await Store.deleteDocument(doc);
+    allDocs = allDocs.filter((d) => d.id !== id);
+    renderProject();
+  } catch (err) {
+    reportError("delete that document", err);
+  }
+}
+
 // ---------- Loan payoff ----------
 function renderLoan(p) {
   // Nothing to pay off on a cash deal, and no tab to show it on either.
@@ -1741,7 +1934,7 @@ function snapshotNow() {
   if (!currentUser) return;
   Offline.saveSnapshot(currentUser.id, {
     projects, partners, memberships, contractors, budgets, tasks, summaries, allDraws,
-    allCategories,
+    allCategories, allDocs,
   });
 }
 
@@ -1759,6 +1952,7 @@ function restoreSnapshot() {
   summaries = d.summaries || [];
   allDraws = d.allDraws || [];
   allCategories = d.allCategories || [];
+  allDocs = d.allDocs || [];
   return true;
 }
 
@@ -3721,6 +3915,28 @@ document.getElementById("category-editor").addEventListener("click", (ev) => {
   const id = categoryRowId(ev);
   if (id) removeCategory(id);
 });
+document.getElementById("add-doc-btn").addEventListener("click", () => openDocModal(null));
+document.getElementById("doc-cancel").addEventListener("click", closeDocModal);
+document.getElementById("doc-save").addEventListener("click", saveDocFromForm);
+// A file you have just chosen suggests its own name, so the common case is
+// choose, save. Anything already typed is left alone.
+document.getElementById("doc-file").addEventListener("change", (ev) => {
+  const file = (ev.target.files || [])[0];
+  const name = document.getElementById("doc-name");
+  if (file && !name.value.trim()) name.value = file.name;
+});
+// One listener for the list: the rows are redrawn on every change.
+document.getElementById("docs-list").addEventListener("click", (ev) => {
+  const btn = ev.target.closest("[data-act]");
+  if (!btn) return;
+  const row = btn.closest(".doc-row");
+  if (!row) return;
+  const id = row.dataset.doc;
+  if (btn.dataset.act === "open") openDocument(id);
+  else if (btn.dataset.act === "edit") openDocModal(id);
+  else if (btn.dataset.act === "delete") deleteDocument(id);
+});
+
 document.getElementById("add-contractor-btn").addEventListener("click", () => openContractorEdit(null));
 document.getElementById("tax-year").addEventListener("change", renderTaxList);
 document.getElementById("tax-export-btn").addEventListener("click", exportTaxCsv);
@@ -3921,7 +4137,7 @@ function fillStaticSelects() {
 
 async function loadAll() {
   try {
-    [projects, partners, memberships, contractors, budgets, tasks, summaries, allDraws, allCategories] = await Promise.all([
+    [projects, partners, memberships, contractors, budgets, tasks, summaries, allDraws, allCategories, allDocs] = await Promise.all([
       Store.getProjects(),
       Store.getPartners(),
       Store.getMemberships(),
@@ -3931,6 +4147,7 @@ async function loadAll() {
       Store.getExpenseSummaries(),
       Store.getDraws(null),
       Store.getCategories(null),
+      Store.getDocuments(null),
     ]);
     snapshotNow();
   } catch (err) {
@@ -3971,6 +4188,8 @@ function onSignedOut() {
   tasks = [];
   summaries = [];
   allDraws = [];
+  allCategories = [];
+  allDocs = [];
   expenses = [];
   draws = [];
   setAuthUi(null);

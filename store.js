@@ -624,6 +624,92 @@ const Store = {
     });
   },
 
+  // ---------- Project documents ----------
+  // The contract, the ALTA, the deed, the permit. Files live in their own
+  // private bucket under "<projectId>/<documentId>/", so the membership rules
+  // that guard the ledger guard the paperwork too. Pass no id to load every
+  // project's at once.
+  async getDocuments(projectId) {
+    const rows = await this.select("documents", "*", (q) => {
+      const base = q.order("created_at", { ascending: false });
+      return projectId ? base.eq("project_id", projectId) : base;
+    });
+    return rows.map(documentFromRow);
+  },
+
+  documentPath(projectId, docId, filename) {
+    const dot = String(filename || "").lastIndexOf(".");
+    const raw = dot > 0 ? filename.slice(dot + 1).toLowerCase() : "";
+    const ext = raw.replace(/[^a-z0-9]/g, "").slice(0, 8) || "bin";
+    return `${projectId}/${docId}/${Date.now().toString(36)}.${ext}`;
+  },
+
+  // Paperwork is not held on the device for later the way a receipt photo is.
+  // These are big files, and when you upload a contract you want to know then
+  // and there whether it landed, not on your next trip past a wifi signal.
+  async uploadDocument(projectId, docId, file) {
+    if (!Offline.online()) {
+      throw new Error("You are offline \u2014 a document needs a connection to upload.");
+    }
+    await this.requireSession();
+    const path = this.documentPath(projectId, docId, file.name || "file");
+    const { error } = await this.client.storage
+      .from("documents")
+      .upload(path, file, {
+        contentType: file.type || "application/octet-stream",
+        upsert: false,
+      });
+    if (error) throw error;
+    return path;
+  },
+
+  async saveDocument(record, id) {
+    const session = await this.requireSession();
+    const row = {
+      id: id || newId(),
+      project_id: record.projectId,
+      name: record.name,
+      kind: record.kind || "Other",
+      path: record.path,
+      size: Number(record.size) || 0,
+      mime: record.mime || null,
+      note: record.note || "",
+      uploaded_by: session.user.id,
+    };
+    const { data, error } = await this.client.from("documents").upsert(row).select().single();
+    if (error) throw explainDenial(error, session, row);
+    return documentFromRow(data);
+  },
+
+  // Nothing in the bucket is readable without a signed URL, so opening a
+  // document is a round trip. One for the whole project rather than one a file.
+  async signDocuments(paths, seconds = 3600) {
+    const list = (paths || []).filter(Boolean);
+    if (!list.length) return {};
+    await this.requireSession();
+    const { data, error } = await this.client.storage
+      .from("documents")
+      .createSignedUrls(list, seconds);
+    if (error) throw error;
+    const out = {};
+    for (const row of data || []) {
+      if (row.signedUrl && !row.error) out[row.path] = row.signedUrl;
+    }
+    return out;
+  },
+
+  // The row goes first. A file with no row is invisible and costs pennies; a
+  // row with no file is a link that breaks in your hand.
+  async deleteDocument(doc) {
+    await this.requireSession();
+    const { error } = await this.client.from("documents").delete().eq("id", doc.id);
+    if (error) throw error;
+    if (doc.path) {
+      const { error: gone } = await this.client.storage.from("documents").remove([doc.path]);
+      if (gone) throw gone;
+    }
+  },
+
   // ---------- Contractors ----------
   // The directory is yours, not a project's: the same trade works across
   // several deals and the IRS wants one total per person per year.
@@ -728,6 +814,21 @@ const Store = {
 // ---------- Row mappers ----------
 function num(v) {
   return v === null || v === undefined || v === "" ? null : Number(v);
+}
+
+function documentFromRow(r) {
+  return {
+    id: r.id,
+    projectId: r.project_id,
+    name: r.name,
+    kind: r.kind || "Other",
+    path: r.path,
+    size: r.size || 0,
+    mime: r.mime || "",
+    note: r.note || "",
+    uploadedBy: r.uploaded_by || null,
+    createdAt: r.created_at || null,
+  };
 }
 
 function categoryFromRow(r) {

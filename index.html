@@ -104,6 +104,7 @@
         <button class="tab" data-ptab="expenses">Expenses</button>
         <button class="tab" data-ptab="budget">Budget</button>
         <button class="tab" data-ptab="schedule">Schedule</button>
+        <button class="tab" data-ptab="documents">Documents</button>
         <button class="tab" data-ptab="loan" id="ptab-loan-btn">Loan</button>
       </div>
 
@@ -183,6 +184,22 @@
         <div id="schedule-summary" class="budget-summary"></div>
         <div id="gantt"></div>
         <p class="breakdown-note" id="schedule-note"></p>
+      </section>
+
+      </div>
+
+      <!-- Everything the deal generates, filed on the deal -->
+      <div id="ptab-documents" class="tab-panel hidden">
+      <section class="docs-panel" aria-label="Project documents">
+        <div class="breakdown-head">
+          <h2>Documents</h2>
+          <div class="budget-head-right">
+            <span class="budget-health" id="docs-health"></span>
+            <button id="add-doc-btn" class="btn btn-primary">+ Add Document</button>
+          </div>
+        </div>
+        <div id="docs-list"></div>
+        <p class="breakdown-note" id="docs-note"></p>
       </section>
 
       </div>
@@ -584,6 +601,37 @@
         <button type="button" id="cat-restore" class="btn">Restore Missing Defaults</button>
         <div class="spacer"></div>
         <button type="button" id="cat-close" class="btn btn-primary">Done</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Filing a document against the project -->
+  <div id="doc-modal" class="modal-overlay hidden">
+    <div class="modal">
+      <h2 id="doc-modal-title">Add a Document</h2>
+      <label class="field">
+        <span>File</span>
+        <input type="file" id="doc-file" />
+      </label>
+      <div class="form-grid">
+        <label class="field">
+          <span>What Is It</span>
+          <select id="doc-kind"></select>
+        </label>
+        <label class="field">
+          <span>Call It</span>
+          <input type="text" id="doc-name" placeholder="Executed purchase contract" />
+        </label>
+      </div>
+      <label class="field">
+        <span>Note <small>(optional)</small></span>
+        <input type="text" id="doc-note" placeholder="Signed 3/14, seller credit at line 506" />
+      </label>
+      <p class="form-hint" id="doc-error"></p>
+      <div class="modal-actions">
+        <button type="button" id="doc-cancel" class="btn">Cancel</button>
+        <div class="spacer"></div>
+        <button type="button" id="doc-save" class="btn btn-primary">Save</button>
       </div>
     </div>
   </div>
