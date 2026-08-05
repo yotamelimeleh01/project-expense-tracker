@@ -698,6 +698,15 @@ const Store = {
     return out;
   },
 
+  // Reading a settlement statement happens on the device, so the file has to
+  // come back here rather than being handed to a browser tab.
+  async downloadDocument(path) {
+    await this.requireSession();
+    const { data, error } = await this.client.storage.from("documents").download(path);
+    if (error) throw error;
+    return data;
+  },
+
   // The row goes first. A file with no row is invisible and costs pennies; a
   // row with no file is a link that breaks in your hand.
   async deleteDocument(doc) {

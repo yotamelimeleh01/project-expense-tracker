@@ -636,6 +636,42 @@
     </div>
   </div>
 
+  <!-- What the settlement statement says, before any of it becomes an expense -->
+  <div id="alta-modal" class="modal-overlay hidden">
+    <div class="modal modal-lg">
+      <h2>What the Settlement Statement Says</h2>
+      <p class="form-hint" id="alta-blurb"></p>
+
+      <div class="alta-head">
+        <label class="field">
+          <span>Date These Land On</span>
+          <input type="date" id="alta-date" />
+        </label>
+        <label class="field">
+          <span>Paid By</span>
+          <select id="alta-partner"></select>
+        </label>
+      </div>
+
+      <div id="alta-price-offer" class="alta-offer hidden">
+        <label>
+          <input type="checkbox" id="alta-price-tick" checked />
+          <span id="alta-price-label"></span>
+        </label>
+      </div>
+
+      <div id="alta-lines"></div>
+      <p class="form-hint" id="alta-error"></p>
+
+      <div class="modal-actions">
+        <span class="alta-total" id="alta-total"></span>
+        <div class="spacer"></div>
+        <button type="button" id="alta-cancel" class="btn">Cancel</button>
+        <button type="button" id="alta-import" class="btn btn-primary">Add These</button>
+      </div>
+    </div>
+  </div>
+
   <!-- Contractor directory and 1099s -->
   <div id="contractor-modal" class="modal-overlay hidden">
     <div class="modal modal-lg">
@@ -809,6 +845,7 @@
   <script src="data.js"></script>
   <script src="offline.js"></script>
   <script src="ocr.js"></script>
+  <script src="alta.js"></script>
   <script src="store.js"></script>
   <script src="app.js"></script>
 </body>

@@ -1359,6 +1359,9 @@ function docGroupHtml(kind, list, editable) {
           (d.createdAt ? " \u00b7 " + escapeHtml(String(d.createdAt).slice(0, 10)) : "") +
           "</span>" +
           (d.note ? '<span class="doc-note">' + escapeHtml(d.note) + "</span>" : "") +
+          (editable && d.kind === ALTA_KIND
+            ? '<button type="button" class="btn btn-small" data-act="read">Read</button>'
+            : "") +
           (editable
             ? '<button type="button" class="btn btn-small" data-act="edit">Rename</button>' +
               '<button type="button" class="btn btn-small btn-danger" data-act="delete">Delete</button>'
@@ -1455,6 +1458,9 @@ async function saveDocFromForm() {
     allDocs = [saved, ...allDocs];
     closeDocModal();
     renderProject();
+    // A settlement statement is read the moment it arrives, on every project
+    // and for everybody, because that is the only time anyone remembers to.
+    if (saved.kind === ALTA_KIND) readAlta(saved.id);
   } catch (err) {
     docError(err.message || "Could not upload that.");
   } finally {
@@ -1493,6 +1499,217 @@ async function deleteDocument(id) {
   } catch (err) {
     reportError("delete that document", err);
   }
+}
+
+const ALTA_KIND = "ALTA / Settlement Statement";
+
+// ---------- Reading a settlement statement ----------
+// A closing generates twenty-odd charges that all belong on the deal, and
+// typing them in by hand is how they end up not being there at all. The form
+// is standardised, so they can be read straight off it. Nothing is written
+// until you have looked at the list, because a settlement statement also
+// carries figures that are not costs at all.
+let altaFound = null;
+let altaDocName = "";
+
+function altaResolveCategory(name) {
+  const known = categoryNames();
+  if (known.includes(name)) return name;
+  const acquire = categoriesIn("acquire");
+  return acquire[0] || known[0] || "";
+}
+
+// Something already on the ledger with the same wording and the same figure
+// is the same charge. Reading a statement twice should not double the deal.
+function altaAlreadyIn(line) {
+  return expenses.some(
+    (e) =>
+      Math.abs(e.amount - line.amount) < 0.005 &&
+      e.description.trim().toLowerCase() === line.description.trim().toLowerCase()
+  );
+}
+
+async function readAlta(docId) {
+  const p = activeProject();
+  const doc = allDocs.find((d) => d.id === docId);
+  if (!p || !doc || !canEdit(p.id)) return;
+
+  const btn = document.querySelector('.doc-row[data-doc="' + docId + '"] [data-act="read"]');
+  if (btn) {
+    btn.disabled = true;
+    btn.textContent = "Reading\u2026";
+  }
+  try {
+    const blob = await Store.downloadDocument(doc.path);
+    const buffer = await blob.arrayBuffer();
+    altaFound = await Alta.scan(buffer);
+    altaDocName = doc.name;
+    openAltaReview(p);
+  } catch (err) {
+    reportError("read that settlement statement", err);
+  } finally {
+    if (btn) {
+      btn.disabled = false;
+      btn.textContent = "Read";
+    }
+  }
+}
+
+function openAltaReview(p) {
+  const lines = altaFound.lines.map((l) => ({
+    description: l.description,
+    amount: l.amount,
+    category: altaResolveCategory(l.category),
+    already: altaAlreadyIn(l),
+  }));
+  altaFound.review = lines;
+
+  document.getElementById("alta-blurb").textContent = lines.length
+    ? "Read from " + altaDocName + ". Untick anything that is not a cost of this " +
+      "deal, and change where a line is filed if it belongs somewhere else."
+    : "Read " + altaDocName + " and found no charges on it. Either it is not a " +
+      "settlement statement or the columns are laid out in a way this cannot follow.";
+
+  document.getElementById("alta-date").value =
+    altaFound.settlementDate || p.settlementDate || new Date().toISOString().slice(0, 10);
+
+  fillSelect(
+    document.getElementById("alta-partner"),
+    partners
+      .filter((x) => x.projectId === p.id)
+      .map((x) => ({ value: x.id, label: x.name })),
+    (partners.find((x) => x.projectId === p.id) || {}).id
+  );
+
+  // The purchase price is on the statement and is a field on the project, so
+  // offer to fill it in rather than leaving two versions of the truth.
+  const offer = document.getElementById("alta-price-offer");
+  const showPrice = altaFound.salesPrice > 0 && Math.abs(altaFound.salesPrice - (p.purchasePrice || 0)) > 0.5;
+  offer.classList.toggle("hidden", !showPrice);
+  if (showPrice) {
+    document.getElementById("alta-price-tick").checked = true;
+    document.getElementById("alta-price-label").textContent =
+      (p.purchasePrice ? "Change the purchase price to " : "Set the purchase price to ") +
+      money(altaFound.salesPrice);
+  }
+
+  document.getElementById("alta-error").textContent = "";
+  renderAltaLines();
+  document.getElementById("alta-modal").classList.remove("hidden");
+}
+
+function renderAltaLines() {
+  const box = document.getElementById("alta-lines");
+  const lines = (altaFound && altaFound.review) || [];
+  if (!lines.length) {
+    box.innerHTML = '<p class="empty">Nothing on it that reads as a charge.</p>';
+    document.getElementById("alta-total").textContent = "";
+    return;
+  }
+  const options = categoryNames();
+  box.innerHTML = lines
+    .map(
+      (l, i) =>
+        '<div class="alta-row" data-i="' + i + '">' +
+        '<input type="checkbox" class="alta-tick"' + (l.already ? "" : " checked") + ' />' +
+        '<span class="alta-desc">' + escapeHtml(l.description) +
+        (l.already ? '<em class="alta-dupe"> \u00b7 already on the ledger</em>' : "") +
+        "</span>" +
+        '<span class="alta-amount">' + money(l.amount) + "</span>" +
+        '<select class="alta-cat">' +
+        options
+          .map(
+            (n) =>
+              '<option value="' + escapeHtml(n) + '"' +
+              (n === l.category ? " selected" : "") + ">" + escapeHtml(n) + "</option>"
+          )
+          .join("") +
+        "</select></div>"
+    )
+    .join("");
+  altaRetotal();
+}
+
+function altaTicked() {
+  const rows = [...document.querySelectorAll("#alta-lines .alta-row")];
+  return rows
+    .filter((r) => r.querySelector(".alta-tick").checked)
+    .map((r) => {
+      const line = altaFound.review[Number(r.dataset.i)];
+      return { ...line, category: r.querySelector(".alta-cat").value };
+    });
+}
+
+function altaRetotal() {
+  const picked = altaTicked();
+  const sum = picked.reduce((t, l) => t + l.amount, 0);
+  document.getElementById("alta-total").textContent =
+    picked.length + (picked.length === 1 ? " charge \u00b7 " : " charges \u00b7 ") + money(sum);
+}
+
+function closeAlta() {
+  document.getElementById("alta-modal").classList.add("hidden");
+  altaFound = null;
+}
+
+async function importAlta() {
+  const p = activeProject();
+  if (!p || !altaFound) return closeAlta();
+  const picked = altaTicked();
+  const date = document.getElementById("alta-date").value;
+  const partnerId = document.getElementById("alta-partner").value || null;
+  const priceOffer = document.getElementById("alta-price-offer");
+  const setPrice =
+    !priceOffer.classList.contains("hidden") &&
+    document.getElementById("alta-price-tick").checked;
+
+  if (!picked.length && !setPrice) {
+    document.getElementById("alta-error").textContent = "Nothing is ticked.";
+    return;
+  }
+
+  const btn = document.getElementById("alta-import");
+  btn.disabled = true;
+  btn.textContent = "Adding\u2026";
+  let added = 0;
+  try {
+    for (const line of picked) {
+      const saved = await Store.saveExpense({
+        projectId: p.id,
+        date,
+        description: line.description,
+        notes: "From the settlement statement",
+        category: line.category,
+        costType: defaultCostTypeFor(line.category),
+        partnerId,
+        contractorId: null,
+        amount: line.amount,
+        receipts: [],
+      });
+      expenses.push(saved);
+      added++;
+    }
+    if (setPrice) {
+      const saved = await Store.saveProject({ ...p, purchasePrice: altaFound.salesPrice }, p.id);
+      const i = projects.findIndex((x) => x.id === p.id);
+      if (i > -1) projects[i] = saved;
+    }
+  } catch (err) {
+    // Whatever went in stays in. Saying how far it got beats a bare failure.
+    document.getElementById("alta-error").textContent =
+      (added ? added + " went in before this: " : "") + (err.message || "Could not add those.");
+    btn.disabled = false;
+    btn.textContent = "Add These";
+    syncSummaries();
+    renderProject();
+    return;
+  }
+  btn.disabled = false;
+  btn.textContent = "Add These";
+  syncSummaries();
+  closeAlta();
+  renderProject();
+  renderDashboard();
 }
 
 // ---------- Loan payoff ----------
@@ -3933,9 +4150,16 @@ document.getElementById("docs-list").addEventListener("click", (ev) => {
   if (!row) return;
   const id = row.dataset.doc;
   if (btn.dataset.act === "open") openDocument(id);
+  else if (btn.dataset.act === "read") readAlta(id);
   else if (btn.dataset.act === "edit") openDocModal(id);
   else if (btn.dataset.act === "delete") deleteDocument(id);
 });
+
+document.getElementById("alta-cancel").addEventListener("click", closeAlta);
+document.getElementById("alta-import").addEventListener("click", importAlta);
+// The running total is the only thing that tells you whether the list is
+// right, so it follows every tick rather than waiting for the save.
+document.getElementById("alta-lines").addEventListener("change", altaRetotal);
 
 document.getElementById("add-contractor-btn").addEventListener("click", () => openContractorEdit(null));
 document.getElementById("tax-year").addEventListener("change", renderTaxList);

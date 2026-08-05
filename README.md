@@ -356,6 +356,7 @@ setup steps forgot to mention, a secret key in `config.js`.
 | `store.js` | everything that talks to Supabase, and the offline write queue |
 | `offline.js` | the queue itself, held photos, and the cached copy of your data |
 | `ocr.js` | reading a receipt photo into an amount, a date and a vendor |
+| `alta.js` | reading a settlement statement into a list of charges |
 | `app.js` | state, the sums, and every screen |
 | `sw.js` `manifest.webmanifest` `icons/` | what makes it installable and offline |
 | `supabase-*.sql` | the migrations, run in order |
