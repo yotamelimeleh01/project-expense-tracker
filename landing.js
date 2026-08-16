@@ -101,9 +101,9 @@
       title: "Every deal on one screen",
       lines: [
         "This is FlipSmart. Everything starts here, on the portfolio screen.",
-        "One number across every project you are running: one million, two hundred and sixty four thousand dollars is in the ground right now, across three deals.",
+        "One number across every project you are running: one million two hundred sixty four thousand dollars is in the ground right now, across three deals.",
         "Each card is a live deal. Its true all-in cost, its projected profit, how much of the budget is gone, and the date it is due to finish.",
-        "Harbour Row is in red. It has burned a hundred and seventeen percent of its budget and two phases are late. You knew that before you opened it.",
+        "Harbour Row is in red. It has burned one hundred seventeen percent of its budget and two phases are late. You knew that before you opened it.",
         "And up top, FlipSmart is already telling you that an electrician's insurance certificate expires in nine days."
       ]
     },
@@ -115,7 +115,7 @@
       lines: [
         "Here is how money gets into the system. You are standing at the lumber yard counter. You photograph the receipt.",
         "FlipSmart reads it on the phone itself. No upload, no third party service, no waiting.",
-        "It pulls out twelve hundred and eighty four dollars and sixty cents, the date, and the vendor, Prime Lumber Company.",
+        "It pulls out twelve hundred eighty four dollars and sixty cents, the date, and the vendor, Prime Lumber Company.",
         "Then it does the thinking. Lumber means framing, so it sets the phase to framing and structural, the cost type to materials, and it matches the vendor to Ridgeline Framing, a contractor already in your directory.",
         "You glance, correct anything it got wrong, and save. The photo is squeezed from four megabytes down to two hundred kilobytes on the way out."
       ]
@@ -140,8 +140,7 @@
       lines: [
         "Now the part that saves deals. Budget against actual, phase by phase.",
         "Green is inside budget. Amber is over, but still inside the ten percent tolerance you set. Red is genuinely over.",
-        "Mechanical, electrical and plumbing came in at seventy seven thousand against sixty two thousand budgeted. Fifteen thousand four hundred over.",
-        "Leave a phase with no budget and FlipSmart still tracks the spend, it just never accuses you of overrunning something you never priced.",
+        "Mechanical, electrical and plumbing came in at seventy seven thousand against sixty two thousand budgeted. Fifteen thousand four hundred over.",        "Leave a phase with no budget and FlipSmart still tracks the spend, it just never accuses you of overrunning something you never priced.",
         "The moment a phase tips over, the project card on your portfolio screen turns red too."
       ]
     },
@@ -152,9 +151,9 @@
       title: "Who takes home what",
       lines: [
         "This is the screen that ends arguments. The profit waterfall.",
-        "First, every partner gets their own money back. One hundred and eighty eight thousand, six hundred and forty dollars of capital, returned before anybody sees profit.",
+        "First, every partner gets their own money back. One hundred eighty eight thousand six hundred forty dollars of capital, returned before anybody sees profit.",
         "Second, the preferred return. Eight percent a year, accrued per dollar from the day that dollar was actually spent. A partner who funded in March is not treated like one who funded in September.",
-        "Third, the upside. Ninety six thousand, nine hundred and forty eight dollars, split by the equity percentages you agreed at the start.",
+        "Third, the upside. Ninety six thousand nine hundred forty eight dollars, split by the equity percentages you agreed at the start.",
         "Everyone sees the same table, and it always balances back to the proceeds. No spreadsheet, no weekend, no argument."
       ]
     },
@@ -167,8 +166,8 @@
         "Time is money on a flip, so FlipSmart schedules the build as well as the budget.",
         "Start from a typical twelve phase rehab and bend it to your job. Set durations, set what depends on what.",
         "FlipSmart runs the schedule forwards and backwards, works out how much slack each phase really has, and outlines the critical path in red.",
-        "Rough-in mechanical, electrical and plumbing is six days late, and it sits on that critical path, so the whole finish date has moved to the fourteenth of October.",
-        "And it prices the damage. Your holding costs run two hundred and fourteen dollars a day, so those six days cost you one thousand, two hundred and eighty four dollars."
+        "Rough-in mechanical, electrical and plumbing is six days late, and it sits on that critical path, so the whole finish date has moved to October fourteenth.",
+        "And it prices the damage. Your holding costs run two hundred fourteen dollars a day, so those six days cost you one thousand two hundred eighty four dollars."
       ]
     },
     {
@@ -178,9 +177,9 @@
       title: "The loan and the draws",
       lines: [
         "If the deal is financed, FlipSmart tracks the loan properly.",
-        "Two hundred and forty thousand funded at closing, forty one thousand five hundred drawn since, eighteen thousand five hundred of holdback still available, and a payoff at sale of two hundred and eighty one thousand five hundred.",
-        "When it is time to draw, FlipSmart gathers every reimbursable expense since your last draw and pre-ticks them. Untick anything the lender will not cover.",
-        "Out comes a proper itemised draw request. Property, borrower, loan position, subtotals by category, certification wording and a signature line. It warns you if you exceed the holdback, or if any line has no receipt behind it.",
+        "Two hundred forty thousand funded at closing, forty one thousand five hundred drawn since, eighteen thousand five hundred of holdback still available, and a payoff at sale of two hundred eighty one thousand five hundred.",
+        "When it is time to draw, FlipSmart gathers every reimbursable expense since your last draw and pre-checks them. Uncheck anything the lender will not cover.",
+        "Out comes a proper itemized draw request. Property, borrower, loan position, subtotals by category, certification wording and a signature line. It warns you if you exceed the holdback, or if any line has no receipt behind it.",
         "And note this: a draw hands back money you already spent. FlipSmart never adds it to your all-in twice. That single rule is where most flip spreadsheets quietly go wrong."
       ]
     },
@@ -191,8 +190,8 @@
       title: "Crew records and 1099s",
       lines: [
         "One contractor directory across every project you run.",
-        "Who has a W-9 on file, whose insurance certificate is current, whose licence is about to lapse. FlipSmart warns you thirty days out, not the day the inspector asks.",
-        "It also totals what you paid each contractor this year, counting labour and services and correctly ignoring materials.",
+        "Who has a W-9 on file, whose insurance certificate is current, whose license is about to lapse. FlipSmart warns you thirty days out, not the day the inspector asks.",
+        "It also totals what you paid each contractor this year, counting labor and services and correctly ignoring materials.",
         "Four of these are past the six hundred dollar threshold and need a ten ninety nine. Cedar Tile has no W-9 on file, so you chase it now, in August, instead of in January."
       ]
     },
@@ -246,20 +245,47 @@
   });
   var chapterItems = Array.prototype.slice.call(listEl.children);
 
+  // Which device voice narrates the tour. Ranked rather than a fixed name,
+  // because the list differs wildly between Edge, Chrome, Safari and Windows.
+  // Wanted, in order: American, male, and one of the modern neural voices
+  // rather than the 1990s speech-engine ones.
+  var MALE = [
+    "andrew", "brian", "guy", "christopher", "eric", "roger", "steffan",
+    "davis", "tony", "jason", "liam", "ryan", "thomas",
+    "david", "mark", "alex", "aaron", "nathan", "evan", "daniel", "james", "tom"
+  ];
+  var FEMALE = [
+    "aria", "jenny", "ava", "emma", "michelle", "ana", "zira", "hazel", "susan",
+    "samantha", "allison", "nicky", "karen", "moira", "tessa", "victoria",
+    "fiona", "serena", "catherine", "linda", "heather", "joanna", "female"
+  ];
+  var NOVELTY = /zarvox|albert|bad news|good news|bells|bubbles|cellos|jester|organ|trinoids|whisper|wobble|boing|junior|ralph|bahh|deranged|hysterical|bruce|superstar/;
+
+  function voiceScore(v) {
+    var n = v.name.toLowerCase();
+    var s = 0;
+    if (/^en[-_]us$/i.test(v.lang)) s += 40;
+    else if (/^en(-|_|$)/i.test(v.lang)) s += 8;
+
+    var male = MALE.findIndex(function (m) { return n.indexOf(m) >= 0; });
+    if (male >= 0) s += 30 - male;
+    if (FEMALE.some(function (f) { return n.indexOf(f) >= 0; })) s -= 20;
+
+    // The neural voices are the difference between a narrator and a satnav.
+    if (/natural|neural|online|enhanced|premium|siri/.test(n)) s += 25;
+    if (n.indexOf("google") >= 0) s += 8;
+    if (NOVELTY.test(n)) s -= 100;
+    return s;
+  }
+
   function pickVoice() {
     if (!speech) return;
     var all = speech.getVoices() || [];
     if (!all.length) return;
-    var english = all.filter(function (v) { return /^en(-|_|$)/i.test(v.lang); });
-    var pool = english.length ? english : all;
-    // Prefer a natural-sounding voice where the platform ships one, but never
-    // fail over a name that does not exist on this device.
-    var preferred = ["Google UK English Male", "Google US English", "Samantha", "Daniel", "Microsoft Aria", "Microsoft Guy", "Microsoft Ryan"];
-    for (var i = 0; i < preferred.length; i++) {
-      var hit = pool.find(function (v) { return v.name.indexOf(preferred[i]) === 0; });
-      if (hit) { voice = hit; return; }
-    }
-    voice = pool.find(function (v) { return v.localService; }) || pool[0];
+    var best = all.slice().sort(function (a, b) { return voiceScore(b) - voiceScore(a); })[0];
+    if (!best) return;
+    voice = best;
+    $("voice-note").textContent = "Narrated by " + best.name.replace(/ - .*$/, "") + ", your device's own voice.";
   }
   if (speech) {
     pickVoice();
@@ -331,8 +357,9 @@
 
     var u = new SpeechSynthesisUtterance(text);
     if (voice) { u.voice = voice; u.lang = voice.lang; } else { u.lang = "en-US"; }
-    u.rate = 1.0;
-    u.pitch = 1.0;
+    // A shade under normal reads as considered rather than synthesised.
+    u.rate = 0.95;
+    u.pitch = 0.95;
     var handled = false;
     function once() { if (!handled) { handled = true; clearTimers(); advance(); } }
     u.onend = once;
