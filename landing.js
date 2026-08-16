@@ -247,8 +247,8 @@
 
   // Which device voice narrates the tour. Ranked rather than a fixed name,
   // because the list differs wildly between Edge, Chrome, Safari and Windows.
-  // Wanted, in order: American, male, and one of the modern neural voices
-  // rather than the 1990s speech-engine ones.
+  // Within the American voices: male, and a modern neural one rather than the
+  // 1990s speech engine.
   var MALE = [
     "andrew", "brian", "guy", "christopher", "eric", "roger", "steffan",
     "davis", "tony", "jason", "liam", "ryan", "thomas",
@@ -282,10 +282,11 @@
     if (!speech) return;
     var all = speech.getVoices() || [];
     if (!all.length) return;
-    var best = all.slice().sort(function (a, b) { return voiceScore(b) - voiceScore(a); })[0];
-    if (!best) return;
-    voice = best;
-    $("voice-note").textContent = "Narrated by " + best.name.replace(/ - .*$/, "") + ", your device's own voice.";
+    // Hard filter, not a preference: if the device has an American voice at all,
+    // nothing else is allowed to win on charm.
+    var american = all.filter(function (v) { return /^en[-_]us$/i.test(v.lang); });
+    var pool = american.length ? american : all;
+    voice = pool.slice().sort(function (a, b) { return voiceScore(b) - voiceScore(a); })[0] || null;
   }
   if (speech) {
     pickVoice();
@@ -356,7 +357,8 @@
     }
 
     var u = new SpeechSynthesisUtterance(text);
-    if (voice) { u.voice = voice; u.lang = voice.lang; } else { u.lang = "en-US"; }
+    if (voice) u.voice = voice;
+    u.lang = "en-US";
     // A shade under normal reads as considered rather than synthesised.
     u.rate = 0.95;
     u.pitch = 0.95;
