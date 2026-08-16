@@ -44,7 +44,10 @@ changed from the project page without opening a form.
   figure: *Cost To Purchase*, *Cost To Do The Work*, *Cost To Hold*.
 - **Loan payoff at sale** — the note, the construction holdback, and every draw
   you pull, so you always know what has to be repaid.
-- **Receipt photos** — several per expense, auto-compressed, tap to enlarge.
+- **Receipts** — several per expense, as photos or PDFs. Photos are
+  auto-compressed and enlarge on tap; PDFs open in a tab. Plenty of suppliers
+  only ever email an invoice, and photographing a screen was a silly thing to
+  ask.
 - **Notes** per expense, **CSV export**, and **print / save-to-PDF**.
 
 ### Two kinds of people
@@ -296,6 +299,8 @@ Open **SQL Editor → New query** and run these in order:
     scope of work into the database so you can edit it
 11. [`supabase-phase8-documents.sql`](supabase-phase8-documents.sql) — files the
     contract, the ALTA and the permits on the project
+12. [`supabase-phase9-pdf-receipts.sql`](supabase-phase9-pdf-receipts.sql) — lets
+    the receipts bucket take PDFs, not only photographs
 
 Every script after the first is additive and safe to re-run. On an existing
 database they move what you already have onto the new shape rather than

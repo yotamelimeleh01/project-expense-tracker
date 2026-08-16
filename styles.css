@@ -395,6 +395,41 @@ tbody td { padding: 10px 12px; font-size: 14px; border-bottom: 1px solid var(--l
   border: 1px solid var(--line);
   cursor: zoom-in;
 }
+.preview-pdf {
+  width: 78px;
+  height: 78px;
+  border-radius: 8px;
+  border: 1px solid var(--line);
+  background: #fef2f2;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 4px;
+  padding: 6px;
+  text-decoration: none;
+  overflow: hidden;
+}
+.preview-pdf:hover { border-color: var(--danger); }
+.pdf-mark {
+  font-size: 11px;
+  font-weight: 800;
+  letter-spacing: 0.06em;
+  color: #fff;
+  background: var(--danger);
+  border-radius: 4px;
+  padding: 2px 7px;
+}
+.pdf-name {
+  font-size: 10px;
+  line-height: 1.25;
+  color: var(--muted);
+  text-align: center;
+  width: 100%;
+  max-height: 26px;
+  overflow: hidden;
+  word-break: break-all;
+}
 .remove-receipt {
   position: absolute;
   top: -7px;
@@ -425,6 +460,19 @@ tbody td { padding: 10px 12px; font-size: 14px; border-bottom: 1px solid var(--l
   border: 1px solid var(--line);
   cursor: zoom-in;
 }
+.thumb-pdf {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: #fef2f2;
+  color: var(--danger);
+  font-size: 11px;
+  font-weight: 800;
+  letter-spacing: 0.06em;
+  text-decoration: none;
+  cursor: pointer;
+}
+.thumb-pdf:hover { border-color: var(--danger); }
 #lightbox { cursor: zoom-out; }
 #lightbox img {
   max-width: 92vw;

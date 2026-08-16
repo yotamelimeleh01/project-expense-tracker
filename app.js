@@ -1851,6 +1851,12 @@ function rowHtml(e) {
     .map((entry, i) => {
       const src = receiptSrc(entry);
       if (!src) return "";
+      if (isPdf(entry)) {
+        return (
+          '<a class="thumb thumb-pdf" href="' + escapeHtml(src) +
+          '" target="_blank" rel="noopener" title="Open receipt ' + (i + 1) + ' (PDF)">PDF</a>'
+        );
+      }
       return (
         '<img class="thumb" src="' + escapeHtml(src) + '" alt="Receipt ' + (i + 1) +
         '" data-lightbox="' + escapeHtml(src) + '" />'
@@ -1928,7 +1934,13 @@ function openModal(id) {
   pendingExpenseId = existing ? existing.id : Store.newId();
   removedReceiptPaths = [];
   pendingReceipts = (existing && Array.isArray(existing.receipts) ? existing.receipts : [])
-    .map((entry) => ({ path: entry, blob: null, url: receiptSrc(entry) }));
+    .map((entry) => ({
+      path: entry,
+      blob: null,
+      kind: isPdf(entry) ? "pdf" : "image",
+      name: isPdf(entry) ? "Saved PDF" : "",
+      url: receiptSrc(entry),
+    }));
   scanUndo = null;
   scanSay("", false);
   renderReceiptPreviews();
@@ -2066,6 +2078,12 @@ function receiptSrc(entry) {
   // A photo taken with no signal exists only on this device until the queue
   // drains, so it is shown straight from local storage.
   return Offline.previewUrl(entry) || receiptUrls[entry] || "";
+}
+
+// The stored form of a receipt is a bare path, so the extension is the only
+// thing that says what it is. uploadReceipt derives it from the blob type.
+function isPdf(entry) {
+  return typeof entry === "string" && /\.pdf(\?|$)/i.test(entry);
 }
 
 // ===========================================================================
@@ -2245,18 +2263,25 @@ function renderReceiptPreviews() {
   // have to be downloaded again to tell us what we saved from it.
   document.getElementById("scan-receipt").classList.toggle("hidden", !scannablePhoto());
   if (!pendingReceipts.length) {
-    el.innerHTML = '<span class="no-receipts">No photos attached yet.</span>';
+    el.innerHTML = '<span class="no-receipts">No receipts attached yet.</span>';
     return;
   }
   el.innerHTML = pendingReceipts
-    .map(
-      (r, i) =>
-        '<div class="preview">' +
-        '<img src="' + escapeHtml(r.url) + '" alt="Receipt ' + (i + 1) +
-        '" data-lightbox="' + escapeHtml(r.url) + '" />' +
+    .map((r, i) => {
+      const face =
+        r.kind === "pdf"
+          ? '<a class="preview-pdf" href="' + escapeHtml(r.url) + '" target="_blank" rel="noopener" ' +
+            'title="Open ' + escapeHtml(r.name || "this PDF") + '">' +
+            '<span class="pdf-mark">PDF</span>' +
+            '<span class="pdf-name">' + escapeHtml(r.name || "Receipt " + (i + 1)) + "</span></a>"
+          : '<img src="' + escapeHtml(r.url) + '" alt="Receipt ' + (i + 1) +
+            '" data-lightbox="' + escapeHtml(r.url) + '" />';
+      return (
+        '<div class="preview">' + face +
         '<button type="button" class="remove-receipt" data-remove="' + i + '" title="Remove">&times;</button>' +
         "</div>"
-    )
+      );
+    })
     .join("");
   el.querySelectorAll("[data-remove]").forEach((b) =>
     b.addEventListener("click", () => {
@@ -2273,12 +2298,42 @@ function renderReceiptPreviews() {
   );
 }
 
+// A PDF goes up exactly as it arrived. Rasterising it to fit the photo path
+// would throw away the text layer, which is the sharpest copy of the receipt.
+const MAX_PDF_BYTES = 20 * 1024 * 1024;
+
 async function handleReceiptFiles(fileList) {
-  const files = Array.from(fileList).filter((f) => f.type.startsWith("image/"));
-  for (const file of files) {
+  for (const file of Array.from(fileList)) {
     try {
-      const blob = await compressImage(file);
-      pendingReceipts.push({ path: null, blob, url: URL.createObjectURL(blob) });
+      if (file.type === "application/pdf" || /\.pdf$/i.test(file.name || "")) {
+        if (file.size > MAX_PDF_BYTES) {
+          alert(
+            file.name + " is " + (file.size / 1048576).toFixed(1) +
+            " MB. The limit for a PDF receipt is 20 MB."
+          );
+          continue;
+        }
+        pendingReceipts.push({
+          path: null,
+          // A file picked by extension alone can arrive with no type at all,
+          // and the upload names the object from the type. Pin it.
+          blob: file.type === "application/pdf" ? file : file.slice(0, file.size, "application/pdf"),
+          kind: "pdf",
+          name: file.name || "receipt.pdf",
+          url: URL.createObjectURL(file),
+        });
+      } else if ((file.type || "").startsWith("image/")) {
+        const blob = await compressImage(file);
+        pendingReceipts.push({
+          path: null,
+          blob,
+          kind: "image",
+          name: file.name || "",
+          url: URL.createObjectURL(blob),
+        });
+      } else {
+        alert("Receipts can be photos or PDFs. " + (file.name || "That file") + " is neither.");
+      }
     } catch (err) {
       alert(err.message);
     }
@@ -2299,9 +2354,11 @@ function scanSay(message, undoable) {
 }
 
 // Only the photo just taken is offered, since that is the one being looked at.
+// A PDF is skipped: the OCR engine reads images, and a PDF receipt is already
+// legible without it.
 function scannablePhoto() {
   for (let i = pendingReceipts.length - 1; i >= 0; i--) {
-    if (pendingReceipts[i].blob) return pendingReceipts[i];
+    if (pendingReceipts[i].blob && pendingReceipts[i].kind !== "pdf") return pendingReceipts[i];
   }
   return null;
 }
@@ -2399,6 +2456,11 @@ function undoScan() {
 }
 
 function openLightbox(src) {
+  // Nothing to zoom into on a PDF; hand it to whatever reads PDFs here.
+  if (isPdf(src)) {
+    window.open(src, "_blank", "noopener");
+    return;
+  }
   document.getElementById("lightbox-img").src = src;
   document.getElementById("lightbox").classList.remove("hidden");
 }

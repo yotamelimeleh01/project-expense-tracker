@@ -16,33 +16,52 @@ const exists = (f) => fs.existsSync(path.join(ROOT, f.replace(/^\.\//, "")));
 const problems = [];
 const note = (line) => console.log("  " + line);
 
-const html = read("index.html");
+// Two pages now: the landing page at index.html and the app at app.html, each
+// with its own script. Checking app.js against the landing page's markup would
+// report every button in the app as missing.
+const PAGES = [
+  { file: "app.html", script: "app.js" },
+  { file: "index.html", script: "landing.js" },
+];
+for (const page of PAGES) {
+  page.html = read(page.file);
+  page.js = read(page.script);
+}
+
+const html = PAGES.map((p) => p.html).join("\n");
 const app = read("app.js");
 
-// Ids in the markup, plus the ones the app writes into the page itself.
-const markupIds = [...html.matchAll(/id="([^"]+)"/g)].map((m) => m[1]);
-const renderedIds = [...app.matchAll(/id=\\?["']([a-z][\w-]*)\\?["']/g)].map((m) => m[1]);
-const ids = new Set([...markupIds, ...renderedIds]);
+// 1. Every element the code reaches for has to exist on the page it ships with.
+let referenced = 0;
+let defined = 0;
+for (const page of PAGES) {
+  const markupIds = [...page.html.matchAll(/id="([^"]+)"/g)].map((m) => m[1]);
+  // Plus the ids the script writes into the page itself.
+  const renderedIds = [...page.js.matchAll(/id=\\?["']([a-z][\w-]*)\\?["']/g)].map((m) => m[1]);
+  const ids = new Set([...markupIds, ...renderedIds]);
+  const wanted = new Set([...page.js.matchAll(/getElementById\("([^"]+)"\)/g)].map((m) => m[1]));
+  for (const id of wanted) {
+    if (!ids.has(id)) {
+      problems.push(page.script + " looks for #" + id + ", which " + page.file + " never creates");
+    }
+  }
+  referenced += wanted.size;
+  defined += ids.size;
 
-// 1. Every element the code reaches for has to exist somewhere.
-const wanted = new Set([...app.matchAll(/getElementById\("([^"]+)"\)/g)].map((m) => m[1]));
-for (const id of wanted) {
-  if (!ids.has(id)) problems.push("app.js looks for #" + id + ", which nothing ever creates");
-}
-note(wanted.size + " element ids referenced, " + ids.size + " defined in the markup or rendered by the app");
+  // 2. A duplicate id makes getElementById return whichever came first, which
+  //    is a bug that only shows up on the second one.
+  const seen = new Set();
+  for (const id of markupIds) {
+    if (seen.has(id)) problems.push(page.file + " defines #" + id + " more than once");
+    seen.add(id);
+  }
 
-// 2. A duplicate id makes getElementById return whichever came first, which is
-//    a bug that only shows up on the second one.
-const seen = new Set();
-for (const id of markupIds) {
-  if (seen.has(id)) problems.push("index.html defines #" + id + " more than once");
-  seen.add(id);
+  // 3. Everything the page loads has to be there.
+  for (const m of page.html.matchAll(/(?:src|href)="(?!https?:)([^"#?]+\.(?:js|css|png|webmanifest))"/g)) {
+    if (!exists(m[1])) problems.push(page.file + " points at " + m[1] + ", which is missing");
+  }
 }
-
-// 3. Everything the page loads has to be there.
-for (const m of html.matchAll(/(?:src|href)="(?!https?:)([^"#?]+\.(?:js|css|png|webmanifest))"/g)) {
-  if (!exists(m[1])) problems.push("index.html points at " + m[1] + ", which is missing");
-}
+note(referenced + " element ids referenced, " + defined + " defined in the markup or rendered by the scripts");
 
 // 4. The service worker precaches by name. A missing file fails the install
 //    quietly and the app simply will not open offline.
@@ -51,8 +70,13 @@ const shell = [...sw.matchAll(/"(\.\/[^"]*)"/g)].map((m) => m[1]);
 for (const f of shell) {
   if (f !== "./" && !exists(f)) problems.push("sw.js precaches " + f + ", which is missing");
 }
-for (const m of html.matchAll(/<script src="((?!https?:)[^"]+)"><\/script>/g)) {
-  if (!shell.includes("./" + m[1])) problems.push("index.html loads " + m[1] + " but sw.js does not cache it");
+for (const page of PAGES) {
+  for (const m of page.html.matchAll(/<script src="((?!https?:)[^"]+)"><\/script>/g)) {
+    if (!shell.includes("./" + m[1])) {
+      problems.push(page.file + " loads " + m[1] + " but sw.js does not cache it");
+    }
+  }
+  if (!shell.includes("./" + page.file)) problems.push("sw.js does not cache " + page.file);
 }
 note(shell.length + " files precached by the service worker");
 
