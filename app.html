@@ -1,0 +1,855 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>FlipSmart</title>
+  <meta name="description" content="What a renovation has really cost, who paid for it, and when it will be finished." />
+  <meta name="theme-color" content="#0f2038" />
+  <meta name="apple-mobile-web-app-capable" content="yes" />
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+  <meta name="apple-mobile-web-app-title" content="FlipSmart" />
+  <link rel="manifest" href="manifest.webmanifest" />
+  <link rel="icon" href="icons/icon-192.png" />
+  <link rel="apple-touch-icon" href="icons/icon-192.png" />
+  <link rel="stylesheet" href="styles.css" />
+</head>
+<body>
+  <header class="topbar">
+    <div class="topbar-inner">
+      <div class="brand-row">
+        <button id="home-btn" class="brand-btn" title="All projects">
+          <h1>FlipSmart</h1>
+        </button>
+        <div class="auth-row">
+          <span id="auth-status" class="auth-status">Starting…</span>
+          <button id="auth-btn" class="btn btn-ghost hidden"></button>
+          <a class="btn btn-ghost" href="index.html">About</a>
+        </div>
+      </div>
+      <nav id="crumbs" class="crumbs hidden">
+        <button id="crumb-home" class="crumb-link">All Projects</button>
+        <span class="crumb-sep">/</span>
+        <span id="crumb-current"></span>
+      </nav>
+    </div>
+  </header>
+
+  <!-- Says plainly what has not reached the server yet. Hidden when there is
+       nothing to say. -->
+  <div id="sync-bar" class="sync-bar hidden" role="status">
+    <span id="sync-text" class="sync-text"></span>
+    <button id="sync-now" class="btn btn-small hidden">Sync Now</button>
+    <button id="sync-discard" class="btn btn-small btn-danger hidden">Discard</button>
+  </div>
+
+  <main class="container">
+    <!-- ================= DASHBOARD ================= -->
+    <section id="dashboard-view">
+      <section class="portfolio" aria-label="Portfolio summary">
+        <div class="portfolio-main">
+          <div class="allin-label">Total All-In Across All Projects</div>
+          <div class="allin-value" id="portfolio-allin">$0.00</div>
+          <div class="allin-break" id="portfolio-sub"></div>
+        </div>
+        <div class="portfolio-stats" id="portfolio-stats"></div>
+      </section>
+
+      <div id="compliance-alert" class="compliance-alert hidden"></div>
+
+      <section class="toolbar">
+        <button id="new-project-btn" class="btn btn-primary">+ New Project</button>
+        <button id="contractors-btn" class="btn">Contractors</button>
+        <button id="library-btn" class="btn">Categories</button>
+        <div class="spacer"></div>
+        <label class="group-label">Show
+          <select id="status-filter">
+            <option value="">All statuses</option>
+          </select>
+        </label>
+      </section>
+
+      <div id="project-grid" class="project-grid"></div>
+      <p id="dashboard-empty" class="empty hidden">
+        No projects yet. Hit <strong>+ New Project</strong> to set up your first deal.
+      </p>
+    </section>
+
+    <!-- ================= SINGLE PROJECT ================= -->
+    <section id="project-view" class="hidden">
+      <section class="project-head">
+        <div class="project-head-main">
+          <h2 id="p-name"></h2>
+          <p class="project-address" id="p-address"></p>
+          <div class="meta-row" id="p-meta"></div>
+        </div>
+        <div class="project-head-actions">
+          <label class="status-picker">Status
+            <select id="p-status"></select>
+          </label>
+          <button id="settings-btn" class="btn">Project Details</button>
+          <button id="share-btn" class="btn">Who Has Access</button>
+        </div>
+      </section>
+
+      <!-- Headline: every dollar in the deal. Stays in view whichever tab you
+           are on, because it is the one number the whole app is about. -->
+      <section class="allin" aria-label="Total all-in on this project">
+        <div class="allin-label">Total All-In On This Project</div>
+        <div class="allin-value" id="total-allin">$0.00</div>
+        <div class="allin-break" id="allin-breakdown"></div>
+      </section>
+
+      <div class="tabs project-tabs" id="project-tabs" role="tablist">
+        <button class="tab active" data-ptab="overview">Overview</button>
+        <button class="tab" data-ptab="expenses">Expenses</button>
+        <button class="tab" data-ptab="budget">Budget</button>
+        <button class="tab" data-ptab="schedule">Schedule</button>
+        <button class="tab" data-ptab="documents">Documents</button>
+        <button class="tab" data-ptab="loan" id="ptab-loan-btn">Loan</button>
+      </div>
+
+      <div id="ptab-overview" class="tab-panel">
+      <!-- Profit, once a sale price is entered -->      <section class="profit-panel hidden" id="profit-panel" aria-label="Profit">
+        <div class="cards">
+          <div class="card">
+            <div class="card-label">Sale Price</div>
+            <div class="card-value" id="profit-sale">$0.00</div>
+          </div>
+          <div class="card">
+            <div class="card-label">Total All-In</div>
+            <div class="card-value" id="profit-allin">$0.00</div>
+          </div>
+          <div class="card">
+            <div class="card-label" id="profit-label">Projected Profit</div>
+            <div class="card-value" id="profit-value">$0.00</div>
+          </div>
+        </div>
+        <p class="profit-note" id="profit-note"></p>
+      </section>
+
+      <!-- Who paid what -->
+      <section class="cards" id="partner-cards" aria-label="Partner totals"></section>
+
+      <!-- Who takes home what -->
+      <section class="split-panel hidden" id="split-panel" aria-label="Profit split">
+        <div class="breakdown-head">
+          <h2>Who Takes Home What</h2>
+          <span class="muted" id="split-basis"></span>
+        </div>
+        <div id="split-table"></div>
+        <p class="budget-note" id="split-note"></p>
+      </section>
+
+      <!-- Cost breakdown by bucket. Belongs with the overview: it is the same
+           money as the headline, only spelled out. -->
+      <section class="breakdown" aria-label="Cost breakdown">
+        <div class="breakdown-head">
+          <h2>Where The Money Went</h2>
+          <span class="breakdown-total" id="breakdown-total"></span>
+        </div>
+        <div id="breakdown-groups"></div>
+        <p class="breakdown-note" id="breakdown-note"></p>
+      </section>
+
+      </div>
+
+      <!-- Budget vs actual -->
+      <div id="ptab-budget" class="tab-panel hidden">
+      <section class="budget-panel" aria-label="Budget versus actual">
+        <div class="breakdown-head">
+          <h2>Budget vs Actual</h2>
+          <div class="budget-head-right">
+            <span class="budget-health" id="budget-health"></span>
+            <button id="categories-btn" class="btn">Categories</button>
+            <button id="budget-btn" class="btn">Edit Scope &amp; Budget</button>
+          </div>
+        </div>
+        <div id="budget-summary" class="budget-summary"></div>
+        <div id="budget-table"></div>
+        <p class="breakdown-note" id="budget-note"></p>
+      </section>
+
+      </div>
+
+      <!-- Schedule -->
+      <div id="ptab-schedule" class="tab-panel hidden">
+      <section class="schedule-panel" aria-label="Schedule">
+        <div class="breakdown-head">
+          <h2>Schedule</h2>
+          <div class="budget-head-right">
+            <span class="budget-health" id="schedule-health"></span>
+            <button id="add-task-btn" class="btn">+ Add Phase</button>
+          </div>
+        </div>
+        <div id="schedule-summary" class="budget-summary"></div>
+        <div id="gantt"></div>
+        <p class="breakdown-note" id="schedule-note"></p>
+      </section>
+
+      </div>
+
+      <!-- Everything the deal generates, filed on the deal -->
+      <div id="ptab-documents" class="tab-panel hidden">
+      <section class="docs-panel" aria-label="Project documents">
+        <div class="breakdown-head">
+          <h2>Documents</h2>
+          <div class="budget-head-right">
+            <span class="budget-health" id="docs-health"></span>
+            <button id="add-doc-btn" class="btn btn-primary">+ Add Document</button>
+          </div>
+        </div>
+        <div id="docs-list"></div>
+        <p class="breakdown-note" id="docs-note"></p>
+      </section>
+
+      </div>
+
+      <!-- Lender payoff. The tab itself is put away on a cash deal. -->
+      <div id="ptab-loan" class="tab-panel hidden">
+      <section class="loan-panel" aria-label="Loan payoff">
+        <div class="loan-head">
+          <h2>Loan Payoff at Sale</h2>
+          <span class="loan-lender" id="loan-lender"></span>
+        </div>
+        <div class="cards loan-cards">
+          <div class="card">
+            <div class="card-label">Funded at Closing</div>
+            <div class="card-value" id="loan-funded">$0.00</div>
+          </div>
+          <div class="card">
+            <div class="card-label">Construction Draws Taken</div>
+            <div class="card-value accent" id="loan-draws">$0.00</div>
+          </div>
+          <div class="card">
+            <div class="card-label">Est. Payoff at Sale</div>
+            <div class="card-value payoff" id="loan-payoff">$0.00</div>
+          </div>
+        </div>
+        <p class="loan-note" id="loan-holdback-note"></p>
+        <div class="loan-draws-head">
+          <h3>Construction Draws</h3>
+          <div class="loan-draw-actions">
+            <button id="draw-request-btn" class="btn">Draw Request</button>
+            <button id="add-draw-btn" class="btn btn-primary">+ Add Draw</button>
+          </div>
+        </div>
+        <div id="draws-table"></div>
+      </section>
+
+      </div>
+
+      <!-- Every expense on the job -->
+      <div id="ptab-expenses" class="tab-panel hidden">
+      <section class="toolbar">
+        <button id="add-btn" class="btn btn-primary">+ Add Expense</button>
+        <div class="spacer"></div>
+        <label class="group-label">Group by
+          <select id="group-select">
+            <option value="category">Category / Phase</option>
+            <option value="costType">Cost Type</option>
+            <option value="partner">Paid By</option>
+          </select>
+        </label>
+        <button id="export-btn" class="btn">Export CSV</button>
+        <button id="print-btn" class="btn">Print / PDF</button>
+      </section>
+
+      <!-- Grouped expense tables -->
+      <div id="groups"></div>
+      </div>
+    </section>
+
+    <!-- ================= STAKEHOLDER VIEW =================
+         What someone opening a read-only link sees. Built entirely from the
+         payload the database hands back for their token. -->
+    <section id="share-view" class="hidden"></section>
+  </main>
+
+  <!-- Add/Edit expense modal -->
+  <div id="modal" class="modal-overlay hidden">
+    <div class="modal">
+      <h2 id="modal-title">Add Expense</h2>
+      <form id="expense-form">
+        <input type="hidden" id="f-id" />
+        <div class="form-grid">
+          <label>Date
+            <input type="date" id="f-date" />
+          </label>
+          <label>Amount ($)
+            <input type="number" id="f-amount" step="0.01" min="0" required />
+          </label>
+          <label class="full">Description / Payable To
+            <input type="text" id="f-description" required />
+          </label>
+          <label>Paid By
+            <select id="f-partner" required></select>
+          </label>
+          <label>Category / Phase
+            <select id="f-category"></select>
+          </label>
+          <label>Cost Type
+            <select id="f-costtype"></select>
+          </label>
+          <label id="f-contractor-field">Paid To (contractor)
+            <select id="f-contractor"></select>
+          </label>
+          <label class="full">Notes / What's in this expense
+            <textarea id="f-notes" rows="3" placeholder="e.g. 2x sheets drywall, 4 gal paint, screws &amp; caulk"></textarea>
+          </label>
+          <div class="full receipts-field">
+            <span class="field-label">Receipts</span>
+            <label class="btn upload-btn" for="f-camera">📷 Take A Photo</label>
+            <input id="f-camera" type="file" accept="image/*" capture="environment" hidden />
+            <label class="btn upload-btn" for="f-receipts">+ Add Receipt Photos</label>
+            <input id="f-receipts" type="file" accept="image/*" multiple hidden />
+            <button type="button" id="scan-receipt" class="btn upload-btn hidden">Read The Receipt</button>
+            <div id="scan-status" class="scan-status hidden">
+              <span id="scan-text"></span>
+              <button type="button" id="scan-undo" class="linkish hidden">Undo</button>
+            </div>
+            <div id="receipt-previews" class="receipt-previews"></div>
+          </div>
+        </div>
+        <div class="modal-actions">
+          <button type="button" id="cancel-btn" class="btn">Cancel</button>
+          <button type="submit" class="btn btn-primary">Save</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <!-- Add/Edit construction draw modal -->
+  <div id="draw-modal" class="modal-overlay hidden">
+    <div class="modal">
+      <h2 id="draw-modal-title">Add Construction Draw</h2>
+      <form id="draw-form">
+        <input type="hidden" id="d-id" />
+        <div class="form-grid">
+          <label>Date
+            <input type="date" id="d-date" />
+          </label>
+          <label>Amount ($)
+            <input type="number" id="d-amount" step="0.01" min="0" required />
+          </label>
+          <label class="full">Note / Purpose
+            <input type="text" id="d-note" placeholder="e.g. Draw 1 - framing &amp; rough-in" />
+          </label>
+        </div>
+        <div class="modal-actions">
+          <button type="button" id="draw-cancel-btn" class="btn">Cancel</button>
+          <button type="submit" class="btn btn-primary">Save</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <!-- Scope of work / budget sheet -->
+  <div id="budget-modal" class="modal-overlay hidden">
+    <div class="modal modal-lg">
+      <h2>Scope of Work &amp; Budget</h2>
+      <p class="modal-hint">
+        Put a number against each phase you plan to spend on. Leave the rest blank —
+        only budgeted categories are tracked for variance.
+      </p>
+      <form id="budget-form">
+        <label class="threshold-field">Flag a category as over budget once it passes
+          <input type="number" id="bg-threshold" step="1" min="0" max="100" value="10" /> %
+        </label>
+        <div id="budget-editor"></div>
+        <div class="budget-editor-total">
+          <span>Total budget</span>
+          <strong id="bg-total">$0.00</strong>
+        </div>
+        <div class="modal-actions">
+          <button type="button" id="bg-cancel" class="btn">Cancel</button>
+          <button type="submit" class="btn btn-primary">Save Budget</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <!-- New / edit project modal -->
+  <div id="project-modal" class="modal-overlay hidden">
+    <div class="modal modal-lg">
+      <h2 id="project-modal-title">New Project</h2>
+      <form id="project-form">
+        <input type="hidden" id="pr-id" />
+
+        <h3 class="form-section">The Property</h3>
+        <div class="form-grid">
+          <label class="full">Project Name
+            <input type="text" id="pr-name" required placeholder="e.g. 450 Spring Dr, Ocala" />
+          </label>
+          <label class="full">Property Address
+            <input type="text" id="pr-address" placeholder="450 Spring Dr, Ocala, FL 34472" />
+          </label>
+          <label>Status
+            <select id="pr-status"></select>
+          </label>
+          <label>Settlement Date
+            <input type="date" id="pr-settlement" />
+          </label>
+          <label>Borrower / Entity
+            <input type="text" id="pr-borrower" placeholder="e.g. Ryan Locksmith LLC" />
+          </label>
+          <label>Purchase Price ($)
+            <input type="number" id="pr-purchase" step="0.01" min="0" placeholder="optional" />
+          </label>
+        </div>
+
+        <h3 class="form-section">The Money</h3>
+        <div class="form-grid">
+          <label class="full">How is this deal paid for?
+            <select id="pr-funding"></select>
+          </label>
+        </div>
+
+        <div id="pr-loan-fields">
+          <div class="form-grid">
+            <label class="full">Lender
+              <input type="text" id="pr-lender" placeholder="e.g. National Loan Funding LLC" />
+            </label>
+            <label>Total Note Amount ($)
+              <input type="number" id="pr-loan" step="0.01" min="0" value="0" />
+            </label>
+            <label>Construction Holdback ($)
+              <input type="number" id="pr-holdback" step="0.01" min="0" value="0" />
+            </label>
+          </div>
+          <p class="form-hint">
+            Funded at closing = note amount minus holdback. That funded amount counts
+            toward your all-in; the holdback only counts as you draw it.
+          </p>
+        </div>
+        <p class="form-hint hidden" id="pr-cash-hint">
+          Every dollar in this deal is your own, so the all-in is simply what you
+          have spent. Loan, draw and payoff figures are put away.
+        </p>
+
+        <h3 class="form-section">Partners <span class="form-sub">whose money is in this deal</span></h3>
+        <div id="pr-partners" class="partner-editor"></div>
+        <button type="button" id="pr-add-partner" class="btn btn-small">+ Add Partner</button>
+        <div class="form-grid">
+          <label>Preferred Return (% a year)
+            <input type="number" id="pr-pref" step="0.1" min="0" value="0" />
+          </label>
+          <p class="form-hint">
+            Equity percentages decide the upside only. At a sale every partner gets their
+            own money back first, then any preferred return on it, and only what is left
+            over is split by those percentages. Leave them all at zero to split in
+            proportion to what each person put in.
+          </p>
+        </div>
+
+        <h3 class="form-section">The Exit</h3>
+        <div class="form-grid">
+          <label>Sale Price ($)
+            <input type="number" id="pr-sale" step="0.01" min="0" placeholder="leave blank until sold" />
+          </label>
+          <label>Sale Date
+            <input type="date" id="pr-saledate" />
+          </label>
+          <label class="full">Notes
+            <textarea id="pr-notes" rows="2" placeholder="Anything worth remembering about this deal"></textarea>
+          </label>
+        </div>
+
+        <div class="modal-actions">
+          <button type="button" id="pr-delete" class="btn btn-danger hidden">Delete Project</button>
+          <div class="spacer"></div>
+          <button type="button" id="pr-cancel" class="btn">Cancel</button>
+          <button type="submit" class="btn btn-primary">Save Project</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <!-- Access / sharing modal -->
+  <div id="share-modal" class="modal-overlay hidden">
+    <div class="modal">
+      <h2>Who Has Access</h2>
+      <p class="modal-hint" id="share-project-name"></p>
+      <div id="member-list" class="member-list"></div>
+      <form id="share-form" class="share-form">
+        <div class="form-grid">
+          <label class="full">Add someone by the email they sign in with
+            <input type="email" id="sh-email" placeholder="partner@example.com" required />
+          </label>
+          <label class="full">Their role
+            <select id="sh-role"></select>
+          </label>
+        </div>
+        <p id="share-error" class="login-error hidden"></p>
+        <div class="modal-actions">
+          <button type="submit" class="btn btn-primary">Add Person</button>
+        </div>
+      </form>
+
+      <h3 class="form-section">Read-Only Links
+        <span class="form-sub">for a lender or investor with no account</span>
+      </h3>
+      <div id="link-list" class="link-list"></div>
+      <div class="link-new">
+        <div class="form-grid">
+          <label class="full">Who is it for
+            <input type="text" id="sl-label" placeholder="e.g. Ridgeline Capital" />
+          </label>
+          <label>Stops working after
+            <select id="sl-days">
+              <option value="7">7 days</option>
+              <option value="30" selected>30 days</option>
+              <option value="90">90 days</option>
+              <option value="0">never</option>
+            </select>
+          </label>
+          <div class="link-switches">
+            <label class="checkbox-field"><input type="checkbox" id="sl-budget" checked /> Budget vs actual</label>
+            <label class="checkbox-field"><input type="checkbox" id="sl-schedule" /> Schedule and finish date</label>
+            <label class="checkbox-field"><input type="checkbox" id="sl-ledger" /> Every line item</label>
+            <label class="checkbox-field"><input type="checkbox" id="sl-splits" /> Partner names and split</label>
+          </div>
+        </div>
+        <p class="form-hint">
+          Anyone holding the link can read it, so treat it like a password. Receipts,
+          notes, contractors and your access list are never included.
+        </p>
+        <button type="button" id="sl-create" class="btn">Create Link</button>
+      </div>
+      <p id="sl-result" class="sl-result hidden"></p>
+
+      <div class="modal-actions">
+        <button type="button" id="share-close" class="btn">Done</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Sign-in / create-account modal -->
+  <div id="login-modal" class="modal-overlay hidden">
+    <div class="modal modal-sm">
+      <h2 id="login-title">Sign In</h2>
+      <p class="modal-hint" id="login-hint">Sign in to load and sync your projects.</p>
+      <form id="login-form">
+        <div class="form-grid">
+          <label class="full">Email
+            <input type="email" id="l-email" autocomplete="username" required />
+          </label>
+          <label class="full">Password
+            <input type="password" id="l-password" autocomplete="current-password" required minlength="8" />
+          </label>
+        </div>
+        <p id="login-error" class="login-error hidden"></p>
+        <p id="login-note" class="login-note hidden"></p>
+        <div class="modal-actions">
+          <button type="button" id="login-toggle" class="btn btn-link">Create an account</button>
+          <button type="submit" id="login-submit" class="btn btn-primary">Sign In</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <!-- Lender draw request -->
+  <div id="drawreq-modal" class="modal-overlay hidden">
+    <div class="modal modal-lg">
+      <h2>Lender Draw Request</h2>
+      <p class="modal-hint">
+        Everything spent on the work since your last draw is ticked. Untick anything
+        the lender will not reimburse, then print it or save it as a PDF.
+      </p>
+      <div class="drawreq-controls">
+        <label>Draw number
+          <input type="number" id="dr-number" min="1" step="1" />
+        </label>
+        <label>Request date
+          <input type="date" id="dr-date" />
+        </label>
+        <label class="drawreq-select-all">
+          <input type="checkbox" id="dr-all" checked /> Select all
+        </label>
+      </div>
+      <div id="drawreq-picker" class="drawreq-picker"></div>
+      <div class="drawreq-total">
+        <span>Amount requested</span>
+        <strong id="dr-total">$0.00</strong>
+      </div>
+      <p class="form-hint" id="dr-warning"></p>
+      <div class="modal-actions">
+        <button type="button" id="dr-cancel" class="btn">Close</button>
+        <button type="button" id="dr-print" class="btn btn-primary">Print / Save as PDF</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Printed output for the draw request. Hidden on screen, the only thing
+       visible on paper once body.printing-draw is set. -->
+  <div id="drawreq-doc" class="drawreq-doc" aria-hidden="true"></div>
+
+  <!-- The scope of work: rename a phase, add one, drop one -->
+  <div id="category-modal" class="modal-overlay hidden">
+    <div class="modal modal-lg">
+      <h2 id="category-modal-title">Categories</h2>
+      <p class="form-hint" id="category-modal-blurb"></p>
+
+      <div id="category-editor"></div>
+
+      <div class="cat-add">
+        <input type="text" id="cat-new-name" placeholder="New category name" />
+        <select id="cat-new-group" aria-label="Bucket"></select>
+        <select id="cat-new-costtype" aria-label="Usual cost type"></select>
+        <button type="button" id="cat-add-btn" class="btn btn-primary">+ Add</button>
+      </div>
+      <p class="form-hint" id="cat-error"></p>
+
+      <div class="modal-actions">
+        <button type="button" id="cat-restore" class="btn">Restore Missing Defaults</button>
+        <div class="spacer"></div>
+        <button type="button" id="cat-close" class="btn btn-primary">Done</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Filing a document against the project -->
+  <div id="doc-modal" class="modal-overlay hidden">
+    <div class="modal">
+      <h2 id="doc-modal-title">Add a Document</h2>
+      <label class="field">
+        <span>File</span>
+        <input type="file" id="doc-file" />
+      </label>
+      <div class="form-grid">
+        <label class="field">
+          <span>What Is It</span>
+          <select id="doc-kind"></select>
+        </label>
+        <label class="field">
+          <span>Call It</span>
+          <input type="text" id="doc-name" placeholder="Executed purchase contract" />
+        </label>
+      </div>
+      <label class="field">
+        <span>Note <small>(optional)</small></span>
+        <input type="text" id="doc-note" placeholder="Signed 3/14, seller credit at line 506" />
+      </label>
+      <p class="form-hint" id="doc-error"></p>
+      <div class="modal-actions">
+        <button type="button" id="doc-cancel" class="btn">Cancel</button>
+        <div class="spacer"></div>
+        <button type="button" id="doc-save" class="btn btn-primary">Save</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- What the settlement statement says, before any of it becomes an expense -->
+  <div id="alta-modal" class="modal-overlay hidden">
+    <div class="modal modal-lg">
+      <h2>What the Settlement Statement Says</h2>
+      <p class="form-hint" id="alta-blurb"></p>
+
+      <div class="alta-head">
+        <label class="field">
+          <span>Date These Land On</span>
+          <input type="date" id="alta-date" />
+        </label>
+        <label class="field">
+          <span>Paid By</span>
+          <select id="alta-partner"></select>
+        </label>
+      </div>
+
+      <div id="alta-price-offer" class="alta-offer hidden">
+        <label>
+          <input type="checkbox" id="alta-price-tick" checked />
+          <span id="alta-price-label"></span>
+        </label>
+      </div>
+
+      <div id="alta-lines"></div>
+      <p class="form-hint" id="alta-error"></p>
+
+      <div class="modal-actions">
+        <span class="alta-total" id="alta-total"></span>
+        <div class="spacer"></div>
+        <button type="button" id="alta-cancel" class="btn">Cancel</button>
+        <button type="button" id="alta-import" class="btn btn-primary">Add These</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Contractor directory and 1099s -->
+  <div id="contractor-modal" class="modal-overlay hidden">
+    <div class="modal modal-lg">
+      <h2>Contractors</h2>
+      <div class="tabs" role="tablist">
+        <button class="tab active" data-tab="directory">Directory</button>
+        <button class="tab" data-tab="tax">1099s</button>
+      </div>
+
+      <div id="tab-directory" class="tab-panel">
+        <div class="tab-toolbar">
+          <button id="add-contractor-btn" class="btn btn-primary">+ Add Contractor</button>
+          <span class="form-hint" id="directory-summary"></span>
+        </div>
+        <div id="contractor-list"></div>
+      </div>
+
+      <div id="tab-tax" class="tab-panel hidden">
+        <div class="tab-toolbar">
+          <label class="group-label">Tax year
+            <select id="tax-year"></select>
+          </label>
+          <div class="spacer"></div>
+          <button id="tax-export-btn" class="btn">Export CSV</button>
+        </div>
+        <div id="tax-list"></div>
+        <p class="form-hint" id="tax-note"></p>
+      </div>
+
+      <div class="modal-actions">
+        <button type="button" id="contractor-close" class="btn">Close</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Add / edit one contractor -->
+  <div id="contractor-edit-modal" class="modal-overlay hidden">
+    <div class="modal">
+      <h2 id="contractor-edit-title">Add Contractor</h2>
+      <form id="contractor-form">
+        <input type="hidden" id="c-id" />
+        <div class="form-grid">
+          <label>Name
+            <input type="text" id="c-name" required placeholder="Carlos Rivera" />
+          </label>
+          <label>Company
+            <input type="text" id="c-company" placeholder="Rivera Drywall LLC" />
+          </label>
+          <label>Trade
+            <input type="text" id="c-trade" placeholder="Drywall" />
+          </label>
+          <label>Phone
+            <input type="tel" id="c-phone" />
+          </label>
+          <label class="full">Email
+            <input type="email" id="c-email" />
+          </label>
+
+          <div class="form-section full">Compliance</div>
+          <label>Insurance (COI) expires
+            <input type="date" id="c-coi" />
+          </label>
+          <label>Licence expires
+            <input type="date" id="c-license-exp" />
+          </label>
+          <label>Licence number
+            <input type="text" id="c-license" />
+          </label>
+          <label class="checkbox-field">
+            <input type="checkbox" id="c-w9" /> W-9 on file
+          </label>
+          <label>Tax ID last 4
+            <input type="text" id="c-taxid" maxlength="4" inputmode="numeric" placeholder="1234" />
+          </label>
+          <p class="form-hint full">
+            Only the last four digits are kept. Never type a full SSN or EIN in here —
+            keep the W-9 itself somewhere built to hold it.
+          </p>
+
+          <label class="full">Notes
+            <textarea id="c-notes" rows="2"></textarea>
+          </label>
+        </div>
+        <div class="modal-actions">
+          <button type="button" id="c-delete" class="btn btn-danger">Delete</button>
+          <div class="spacer"></div>
+          <button type="button" id="c-cancel" class="btn">Cancel</button>
+          <button type="submit" class="btn btn-primary">Save</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <!-- Add / edit a phase of work -->
+  <div id="task-modal" class="modal-overlay hidden">
+    <div class="modal">
+      <h2 id="task-title">Add Phase</h2>
+      <form id="task-form" autocomplete="off">
+        <input type="hidden" id="t-id" />
+        <label class="field">
+          <span>Phase</span>
+          <input type="text" id="t-name" placeholder="Rough-in MEP" required />
+        </label>
+        <div class="form-grid">
+          <label class="field">
+            <span>Category</span>
+            <select id="t-category"></select>
+          </label>
+          <label class="field">
+            <span>Contractor</span>
+            <select id="t-contractor"></select>
+          </label>
+        </div>
+        <div class="form-grid">
+          <label class="field">
+            <span>How Many Days</span>
+            <input type="number" id="t-days" min="1" step="1" value="5" required />
+          </label>
+          <label class="field">
+            <span>Not Before <small>(optional)</small></span>
+            <input type="date" id="t-planned" />
+          </label>
+        </div>
+        <label class="field">
+          <span>Waits For</span>
+          <div id="t-deps" class="dep-list"></div>
+        </label>
+        <div class="form-grid">
+          <label class="field">
+            <span>Status</span>
+            <select id="t-status"></select>
+          </label>
+          <label class="field">
+            <span>Really Started</span>
+            <input type="date" id="t-actual-start" />
+          </label>
+          <label class="field">
+            <span>Really Finished</span>
+            <input type="date" id="t-actual-end" />
+          </label>
+        </div>
+        <label class="field">
+          <span>Notes</span>
+          <input type="text" id="t-notes" placeholder="Optional" />
+        </label>
+        <p class="form-hint">
+          Days are calendar days, weekends included. Leave "not before" empty and the
+          phase simply follows whatever it waits for.
+        </p>
+        <div class="modal-actions">
+          <button type="button" id="t-delete" class="btn btn-danger">Delete</button>
+          <div class="spacer"></div>
+          <button type="button" id="t-cancel" class="btn">Cancel</button>
+          <button type="submit" class="btn btn-primary">Save</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <!-- Receipt image viewer -->
+  <div id="lightbox" class="modal-overlay hidden">
+    <img id="lightbox-img" alt="Receipt" />
+  </div>
+
+  <footer class="footer">
+    FlipSmart — synced to the cloud, on every device you sign in from.
+  </footer>
+
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.45.4/dist/umd/supabase.min.js"></script>
+  <script src="config.js"></script>
+  <script src="data.js"></script>
+  <script src="offline.js"></script>
+  <script src="ocr.js"></script>
+  <script src="alta.js"></script>
+  <script src="store.js"></script>
+  <script src="app.js"></script>
+</body>
+</html>

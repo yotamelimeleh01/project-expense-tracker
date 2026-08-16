@@ -3874,7 +3874,7 @@ function renderShareView(payload) {
   if (scope.ledger) html += shareLedgerHtml(scope);
 
   html +=
-    '<p class="share-foot">Shared from Project Expense Tracker. ' +
+    '<p class="share-foot">Shared from FlipSmart. ' +
     (payload.expires_at
       ? "This link stops working on " + escapeHtml(String(payload.expires_at).slice(0, 10)) + "."
       : "This link has no expiry date.") +
@@ -4297,18 +4297,59 @@ document.getElementById("auth-btn").addEventListener("click", async () => {
   }
 });
 
+let loginMode = "signin";
+
+function setLoginMode(mode) {
+  loginMode = mode === "signup" ? "signup" : "signin";
+  const signup = loginMode === "signup";
+  document.getElementById("login-title").textContent = signup ? "Create Your Account" : "Sign In";
+  document.getElementById("login-hint").textContent = signup
+    ? "One account covers every deal you run. No card needed."
+    : "Sign in to load and sync your projects.";
+  document.getElementById("login-submit").textContent = signup ? "Create Account" : "Sign In";
+  document.getElementById("login-toggle").textContent = signup
+    ? "I already have an account"
+    : "Create an account";
+  document.getElementById("l-password").setAttribute(
+    "autocomplete",
+    signup ? "new-password" : "current-password"
+  );
+  document.getElementById("login-error").classList.add("hidden");
+  document.getElementById("login-note").classList.add("hidden");
+}
+
+document.getElementById("login-toggle").addEventListener("click", () => {
+  setLoginMode(loginMode === "signup" ? "signin" : "signup");
+});
+
 document.getElementById("login-form").addEventListener("submit", async (ev) => {
   ev.preventDefault();
   const errEl = document.getElementById("login-error");
+  const noteEl = document.getElementById("login-note");
+  const btn = document.getElementById("login-submit");
   errEl.classList.add("hidden");
+  noteEl.classList.add("hidden");
+  btn.disabled = true;
+  const email = document.getElementById("l-email").value.trim();
+  const password = document.getElementById("l-password").value;
   try {
-    await Store.signIn(
-      document.getElementById("l-email").value.trim(),
-      document.getElementById("l-password").value
-    );
+    if (loginMode === "signup") {
+      const live = await Store.signUp(email, password);
+      if (!live) {
+        noteEl.textContent =
+          "Account created. Check " + email + " for the confirmation link, then sign in.";
+        noteEl.classList.remove("hidden");
+        setLoginMode("signin");
+        noteEl.classList.remove("hidden");
+      }
+    } else {
+      await Store.signIn(email, password);
+    }
   } catch (err) {
     errEl.textContent = err.message || "Sign-in failed.";
     errEl.classList.remove("hidden");
+  } finally {
+    btn.disabled = false;
   }
 });
 
@@ -4318,11 +4359,12 @@ window.addEventListener("hashchange", route);
 // BOOT
 // ===========================================================================
 function openLoginModal() {
-  document.getElementById("login-error").classList.add("hidden");
+  // The landing page sends people here already knowing which one they wanted.
+  const wanted = new URLSearchParams(location.search).get("auth");
+  setLoginMode(wanted === "signup" ? "signup" : "signin");
   document.getElementById("login-modal").classList.remove("hidden");
   document.getElementById("l-email").focus();
 }
-
 function closeLoginModal() {
   document.getElementById("login-modal").classList.add("hidden");
   document.getElementById("login-form").reset();

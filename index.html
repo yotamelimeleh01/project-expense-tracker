@@ -1,852 +1,774 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-  <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Project Expense Tracker</title>
-  <meta name="description" content="What a renovation has really cost, who paid for it, and when it will be finished." />
-  <meta name="theme-color" content="#0f2038" />
-  <meta name="apple-mobile-web-app-capable" content="yes" />
-  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
-  <meta name="apple-mobile-web-app-title" content="Projects" />
-  <link rel="manifest" href="manifest.webmanifest" />
-  <link rel="icon" href="icons/icon-192.png" />
-  <link rel="apple-touch-icon" href="icons/icon-192.png" />
-  <link rel="stylesheet" href="styles.css" />
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>FlipSmart &mdash; Know exactly what the flip cost, and what you keep</title>
+<meta name="description" content="FlipSmart is the job-site expense tracker for real estate flips and renovations. Scan receipts, track every dollar against budget, run the partner profit waterfall, build the schedule, and file lender draw requests. Works offline." />
+<meta name="theme-color" content="#0a1628" />
+<meta name="apple-mobile-web-app-capable" content="yes" />
+<meta name="apple-mobile-web-app-title" content="FlipSmart" />
+<link rel="manifest" href="manifest.webmanifest" />
+<link rel="icon" href="icons/icon-192.png" />
+<link rel="apple-touch-icon" href="icons/icon-192.png" />
+<meta property="og:type" content="website" />
+<meta property="og:site_name" content="FlipSmart" />
+<meta property="og:title" content="FlipSmart &mdash; Know exactly what the flip cost, and what you keep" />
+<meta property="og:description" content="Every dollar in the deal, every partner's share, every phase of the build. One number that is always right." />
+<meta property="og:image" content="icons/icon-512.png" />
+<meta name="twitter:card" content="summary_large_image" />
+<link rel="stylesheet" href="landing.css" />
+<script type="application/ld+json">
+{
+  "@context": "https://schema.org",
+  "@type": "SoftwareApplication",
+  "name": "FlipSmart",
+  "applicationCategory": "FinanceApplication",
+  "operatingSystem": "Web, iOS, Android",
+  "description": "Multi-project expense, budget, schedule and profit tracker for real estate flips and renovations.",
+  "offers": { "@type": "Offer", "price": "0", "priceCurrency": "USD" }
+}
+</script>
 </head>
 <body>
-  <header class="topbar">
-    <div class="topbar-inner">
-      <div class="brand-row">
-        <button id="home-btn" class="brand-btn" title="All projects">
-          <h1>Project Expense Tracker</h1>
-        </button>
-        <div class="auth-row">
-          <span id="auth-status" class="auth-status">Starting…</span>
-          <button id="auth-btn" class="btn btn-ghost hidden"></button>
-        </div>
-      </div>
-      <nav id="crumbs" class="crumbs hidden">
-        <button id="crumb-home" class="crumb-link">All Projects</button>
-        <span class="crumb-sep">/</span>
-        <span id="crumb-current"></span>
-      </nav>
+<a class="skip" href="#main">Skip to content</a>
+
+<!-- ======================= NAV ======================= -->
+<header class="nav" id="nav">
+  <div class="nav-in">
+    <a class="logo" href="#top" aria-label="FlipSmart home">
+      <span class="logo-mark" aria-hidden="true">
+        <svg viewBox="0 0 32 32" role="presentation">
+          <path d="M4 26 L4 12 L16 4 L28 12 L28 26" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linejoin="round" stroke-linecap="round"/>
+          <path d="M10 26 v-7 h5 v7" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linejoin="round"/>
+          <path d="M19 24 l3.4-4.6 2.6 2 3.4-5" fill="none" stroke="#5b8cff" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"/>
+        </svg>
+      </span>
+      <span class="logo-word">Flip<b>Smart</b></span>
+    </a>
+
+    <nav class="nav-links" aria-label="Primary">
+      <a href="#tour">Watch the tour</a>
+      <a href="#features">Features</a>
+      <a href="#numbers">The math</a>
+      <a href="#how">How it works</a>
+      <a href="#faq">FAQ</a>
+    </nav>
+
+    <div class="nav-cta">
+      <button class="btn btn-ghost" data-auth="signin">Sign in</button>
+      <button class="btn btn-primary" data-auth="signup">Create free account</button>
     </div>
-  </header>
 
-  <!-- Says plainly what has not reached the server yet. Hidden when there is
-       nothing to say. -->
-  <div id="sync-bar" class="sync-bar hidden" role="status">
-    <span id="sync-text" class="sync-text"></span>
-    <button id="sync-now" class="btn btn-small hidden">Sync Now</button>
-    <button id="sync-discard" class="btn btn-small btn-danger hidden">Discard</button>
+    <button class="nav-burger" id="nav-burger" aria-label="Menu" aria-expanded="false">
+      <span></span><span></span><span></span>
+    </button>
   </div>
+</header>
 
-  <main class="container">
-    <!-- ================= DASHBOARD ================= -->
-    <section id="dashboard-view">
-      <section class="portfolio" aria-label="Portfolio summary">
-        <div class="portfolio-main">
-          <div class="allin-label">Total All-In Across All Projects</div>
-          <div class="allin-value" id="portfolio-allin">$0.00</div>
-          <div class="allin-break" id="portfolio-sub"></div>
-        </div>
-        <div class="portfolio-stats" id="portfolio-stats"></div>
-      </section>
+<main id="main">
 
-      <div id="compliance-alert" class="compliance-alert hidden"></div>
+<!-- ======================= HERO ======================= -->
+<section class="hero" id="top">
+  <div class="grid-bg" aria-hidden="true"></div>
+  <div class="hero-in">
 
-      <section class="toolbar">
-        <button id="new-project-btn" class="btn btn-primary">+ New Project</button>
-        <button id="contractors-btn" class="btn">Contractors</button>
-        <button id="library-btn" class="btn">Categories</button>
-        <div class="spacer"></div>
-        <label class="group-label">Show
-          <select id="status-filter">
-            <option value="">All statuses</option>
-          </select>
-        </label>
-      </section>
-
-      <div id="project-grid" class="project-grid"></div>
-      <p id="dashboard-empty" class="empty hidden">
-        No projects yet. Hit <strong>+ New Project</strong> to set up your first deal.
+    <div class="hero-copy">
+      <p class="eyebrow"><span class="dot"></span> Built on a job site, not in a boardroom</p>
+      <h1>
+        Know exactly what the flip cost.<br />
+        <span class="grad">And exactly what you keep.</span>
+      </h1>
+      <p class="lede">
+        FlipSmart is the live project ledger for people who buy, fix and sell property.
+        Snap a receipt in the driveway with no signal. See your true all&#8209;in cost, your
+        budget variance, your critical path, and every partner's share of the profit &mdash;
+        the moment the money moves.
       </p>
-    </section>
 
-    <!-- ================= SINGLE PROJECT ================= -->
-    <section id="project-view" class="hidden">
-      <section class="project-head">
-        <div class="project-head-main">
-          <h2 id="p-name"></h2>
-          <p class="project-address" id="p-address"></p>
-          <div class="meta-row" id="p-meta"></div>
-        </div>
-        <div class="project-head-actions">
-          <label class="status-picker">Status
-            <select id="p-status"></select>
-          </label>
-          <button id="settings-btn" class="btn">Project Details</button>
-          <button id="share-btn" class="btn">Who Has Access</button>
-        </div>
-      </section>
-
-      <!-- Headline: every dollar in the deal. Stays in view whichever tab you
-           are on, because it is the one number the whole app is about. -->
-      <section class="allin" aria-label="Total all-in on this project">
-        <div class="allin-label">Total All-In On This Project</div>
-        <div class="allin-value" id="total-allin">$0.00</div>
-        <div class="allin-break" id="allin-breakdown"></div>
-      </section>
-
-      <div class="tabs project-tabs" id="project-tabs" role="tablist">
-        <button class="tab active" data-ptab="overview">Overview</button>
-        <button class="tab" data-ptab="expenses">Expenses</button>
-        <button class="tab" data-ptab="budget">Budget</button>
-        <button class="tab" data-ptab="schedule">Schedule</button>
-        <button class="tab" data-ptab="documents">Documents</button>
-        <button class="tab" data-ptab="loan" id="ptab-loan-btn">Loan</button>
+      <div class="hero-cta">
+        <button class="btn btn-primary btn-lg" data-auth="signup">Start tracking free</button>
+        <a class="btn btn-outline btn-lg" href="#tour">
+          <svg viewBox="0 0 24 24" class="ico" aria-hidden="true"><path d="M8 5v14l11-7z" fill="currentColor"/></svg>
+          Watch the 4&#8209;minute tour
+        </a>
       </div>
 
-      <div id="ptab-overview" class="tab-panel">
-      <!-- Profit, once a sale price is entered -->      <section class="profit-panel hidden" id="profit-panel" aria-label="Profit">
-        <div class="cards">
-          <div class="card">
-            <div class="card-label">Sale Price</div>
-            <div class="card-value" id="profit-sale">$0.00</div>
-          </div>
-          <div class="card">
-            <div class="card-label">Total All-In</div>
-            <div class="card-value" id="profit-allin">$0.00</div>
-          </div>
-          <div class="card">
-            <div class="card-label" id="profit-label">Projected Profit</div>
-            <div class="card-value" id="profit-value">$0.00</div>
-          </div>
-        </div>
-        <p class="profit-note" id="profit-note"></p>
-      </section>
-
-      <!-- Who paid what -->
-      <section class="cards" id="partner-cards" aria-label="Partner totals"></section>
-
-      <!-- Who takes home what -->
-      <section class="split-panel hidden" id="split-panel" aria-label="Profit split">
-        <div class="breakdown-head">
-          <h2>Who Takes Home What</h2>
-          <span class="muted" id="split-basis"></span>
-        </div>
-        <div id="split-table"></div>
-        <p class="budget-note" id="split-note"></p>
-      </section>
-
-      <!-- Cost breakdown by bucket. Belongs with the overview: it is the same
-           money as the headline, only spelled out. -->
-      <section class="breakdown" aria-label="Cost breakdown">
-        <div class="breakdown-head">
-          <h2>Where The Money Went</h2>
-          <span class="breakdown-total" id="breakdown-total"></span>
-        </div>
-        <div id="breakdown-groups"></div>
-        <p class="breakdown-note" id="breakdown-note"></p>
-      </section>
-
-      </div>
-
-      <!-- Budget vs actual -->
-      <div id="ptab-budget" class="tab-panel hidden">
-      <section class="budget-panel" aria-label="Budget versus actual">
-        <div class="breakdown-head">
-          <h2>Budget vs Actual</h2>
-          <div class="budget-head-right">
-            <span class="budget-health" id="budget-health"></span>
-            <button id="categories-btn" class="btn">Categories</button>
-            <button id="budget-btn" class="btn">Edit Scope &amp; Budget</button>
-          </div>
-        </div>
-        <div id="budget-summary" class="budget-summary"></div>
-        <div id="budget-table"></div>
-        <p class="breakdown-note" id="budget-note"></p>
-      </section>
-
-      </div>
-
-      <!-- Schedule -->
-      <div id="ptab-schedule" class="tab-panel hidden">
-      <section class="schedule-panel" aria-label="Schedule">
-        <div class="breakdown-head">
-          <h2>Schedule</h2>
-          <div class="budget-head-right">
-            <span class="budget-health" id="schedule-health"></span>
-            <button id="add-task-btn" class="btn">+ Add Phase</button>
-          </div>
-        </div>
-        <div id="schedule-summary" class="budget-summary"></div>
-        <div id="gantt"></div>
-        <p class="breakdown-note" id="schedule-note"></p>
-      </section>
-
-      </div>
-
-      <!-- Everything the deal generates, filed on the deal -->
-      <div id="ptab-documents" class="tab-panel hidden">
-      <section class="docs-panel" aria-label="Project documents">
-        <div class="breakdown-head">
-          <h2>Documents</h2>
-          <div class="budget-head-right">
-            <span class="budget-health" id="docs-health"></span>
-            <button id="add-doc-btn" class="btn btn-primary">+ Add Document</button>
-          </div>
-        </div>
-        <div id="docs-list"></div>
-        <p class="breakdown-note" id="docs-note"></p>
-      </section>
-
-      </div>
-
-      <!-- Lender payoff. The tab itself is put away on a cash deal. -->
-      <div id="ptab-loan" class="tab-panel hidden">
-      <section class="loan-panel" aria-label="Loan payoff">
-        <div class="loan-head">
-          <h2>Loan Payoff at Sale</h2>
-          <span class="loan-lender" id="loan-lender"></span>
-        </div>
-        <div class="cards loan-cards">
-          <div class="card">
-            <div class="card-label">Funded at Closing</div>
-            <div class="card-value" id="loan-funded">$0.00</div>
-          </div>
-          <div class="card">
-            <div class="card-label">Construction Draws Taken</div>
-            <div class="card-value accent" id="loan-draws">$0.00</div>
-          </div>
-          <div class="card">
-            <div class="card-label">Est. Payoff at Sale</div>
-            <div class="card-value payoff" id="loan-payoff">$0.00</div>
-          </div>
-        </div>
-        <p class="loan-note" id="loan-holdback-note"></p>
-        <div class="loan-draws-head">
-          <h3>Construction Draws</h3>
-          <div class="loan-draw-actions">
-            <button id="draw-request-btn" class="btn">Draw Request</button>
-            <button id="add-draw-btn" class="btn btn-primary">+ Add Draw</button>
-          </div>
-        </div>
-        <div id="draws-table"></div>
-      </section>
-
-      </div>
-
-      <!-- Every expense on the job -->
-      <div id="ptab-expenses" class="tab-panel hidden">
-      <section class="toolbar">
-        <button id="add-btn" class="btn btn-primary">+ Add Expense</button>
-        <div class="spacer"></div>
-        <label class="group-label">Group by
-          <select id="group-select">
-            <option value="category">Category / Phase</option>
-            <option value="costType">Cost Type</option>
-            <option value="partner">Paid By</option>
-          </select>
-        </label>
-        <button id="export-btn" class="btn">Export CSV</button>
-        <button id="print-btn" class="btn">Print / PDF</button>
-      </section>
-
-      <!-- Grouped expense tables -->
-      <div id="groups"></div>
-      </div>
-    </section>
-
-    <!-- ================= STAKEHOLDER VIEW =================
-         What someone opening a read-only link sees. Built entirely from the
-         payload the database hands back for their token. -->
-    <section id="share-view" class="hidden"></section>
-  </main>
-
-  <!-- Add/Edit expense modal -->
-  <div id="modal" class="modal-overlay hidden">
-    <div class="modal">
-      <h2 id="modal-title">Add Expense</h2>
-      <form id="expense-form">
-        <input type="hidden" id="f-id" />
-        <div class="form-grid">
-          <label>Date
-            <input type="date" id="f-date" />
-          </label>
-          <label>Amount ($)
-            <input type="number" id="f-amount" step="0.01" min="0" required />
-          </label>
-          <label class="full">Description / Payable To
-            <input type="text" id="f-description" required />
-          </label>
-          <label>Paid By
-            <select id="f-partner" required></select>
-          </label>
-          <label>Category / Phase
-            <select id="f-category"></select>
-          </label>
-          <label>Cost Type
-            <select id="f-costtype"></select>
-          </label>
-          <label id="f-contractor-field">Paid To (contractor)
-            <select id="f-contractor"></select>
-          </label>
-          <label class="full">Notes / What's in this expense
-            <textarea id="f-notes" rows="3" placeholder="e.g. 2x sheets drywall, 4 gal paint, screws &amp; caulk"></textarea>
-          </label>
-          <div class="full receipts-field">
-            <span class="field-label">Receipts</span>
-            <label class="btn upload-btn" for="f-camera">📷 Take A Photo</label>
-            <input id="f-camera" type="file" accept="image/*" capture="environment" hidden />
-            <label class="btn upload-btn" for="f-receipts">+ Add Receipt Photos</label>
-            <input id="f-receipts" type="file" accept="image/*" multiple hidden />
-            <button type="button" id="scan-receipt" class="btn upload-btn hidden">Read The Receipt</button>
-            <div id="scan-status" class="scan-status hidden">
-              <span id="scan-text"></span>
-              <button type="button" id="scan-undo" class="linkish hidden">Undo</button>
-            </div>
-            <div id="receipt-previews" class="receipt-previews"></div>
-          </div>
-        </div>
-        <div class="modal-actions">
-          <button type="button" id="cancel-btn" class="btn">Cancel</button>
-          <button type="submit" class="btn btn-primary">Save</button>
-        </div>
-      </form>
+      <ul class="hero-trust">
+        <li><svg viewBox="0 0 24 24" class="ico"><path d="M20 6 9 17l-5-5" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"/></svg> No credit card</li>
+        <li><svg viewBox="0 0 24 24" class="ico"><path d="M20 6 9 17l-5-5" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"/></svg> Works with no signal</li>
+        <li><svg viewBox="0 0 24 24" class="ico"><path d="M20 6 9 17l-5-5" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"/></svg> Unlimited projects</li>
+      </ul>
     </div>
-  </div>
 
-  <!-- Add/Edit construction draw modal -->
-  <div id="draw-modal" class="modal-overlay hidden">
-    <div class="modal">
-      <h2 id="draw-modal-title">Add Construction Draw</h2>
-      <form id="draw-form">
-        <input type="hidden" id="d-id" />
-        <div class="form-grid">
-          <label>Date
-            <input type="date" id="d-date" />
-          </label>
-          <label>Amount ($)
-            <input type="number" id="d-amount" step="0.01" min="0" required />
-          </label>
-          <label class="full">Note / Purpose
-            <input type="text" id="d-note" placeholder="e.g. Draw 1 - framing &amp; rough-in" />
-          </label>
-        </div>
-        <div class="modal-actions">
-          <button type="button" id="draw-cancel-btn" class="btn">Cancel</button>
-          <button type="submit" class="btn btn-primary">Save</button>
-        </div>
-      </form>
-    </div>
-  </div>
+    <!-- Live hero card: the one number the whole product is about -->
+    <div class="hero-art" aria-hidden="true">
+      <div class="glow"></div>
 
-  <!-- Scope of work / budget sheet -->
-  <div id="budget-modal" class="modal-overlay hidden">
-    <div class="modal modal-lg">
-      <h2>Scope of Work &amp; Budget</h2>
-      <p class="modal-hint">
-        Put a number against each phase you plan to spend on. Leave the rest blank —
-        only budgeted categories are tracked for variance.
-      </p>
-      <form id="budget-form">
-        <label class="threshold-field">Flag a category as over budget once it passes
-          <input type="number" id="bg-threshold" step="1" min="0" max="100" value="10" /> %
-        </label>
-        <div id="budget-editor"></div>
-        <div class="budget-editor-total">
-          <span>Total budget</span>
-          <strong id="bg-total">$0.00</strong>
+      <div class="hcard hcard-main">
+        <div class="hcard-top">
+          <span class="chip chip-live"><i></i> Live</span>
+          <span class="hcard-name">42 Maple Street</span>
         </div>
-        <div class="modal-actions">
-          <button type="button" id="bg-cancel" class="btn">Cancel</button>
-          <button type="submit" class="btn btn-primary">Save Budget</button>
+        <div class="hcard-label">Total all&#8209;in on this project</div>
+        <div class="hcard-value" data-count="428640">$0</div>
+        <div class="hcard-sub">$188,640 partner cash&nbsp; + &nbsp;$240,000 funded loan</div>
+        <div class="hbars">
+          <span class="hbar" style="--w:19%; --c:#5b8cff"></span>
+          <span class="hbar" style="--w:46%; --c:#2f6fed"></span>
+          <span class="hbar" style="--w:21%; --c:#f59e0b"></span>
+          <span class="hbar" style="--w:14%; --c:#16a34a"></span>
         </div>
-      </form>
-    </div>
-  </div>
-
-  <!-- New / edit project modal -->
-  <div id="project-modal" class="modal-overlay hidden">
-    <div class="modal modal-lg">
-      <h2 id="project-modal-title">New Project</h2>
-      <form id="project-form">
-        <input type="hidden" id="pr-id" />
-
-        <h3 class="form-section">The Property</h3>
-        <div class="form-grid">
-          <label class="full">Project Name
-            <input type="text" id="pr-name" required placeholder="e.g. 450 Spring Dr, Ocala" />
-          </label>
-          <label class="full">Property Address
-            <input type="text" id="pr-address" placeholder="450 Spring Dr, Ocala, FL 34472" />
-          </label>
-          <label>Status
-            <select id="pr-status"></select>
-          </label>
-          <label>Settlement Date
-            <input type="date" id="pr-settlement" />
-          </label>
-          <label>Borrower / Entity
-            <input type="text" id="pr-borrower" placeholder="e.g. Ryan Locksmith LLC" />
-          </label>
-          <label>Purchase Price ($)
-            <input type="number" id="pr-purchase" step="0.01" min="0" placeholder="optional" />
-          </label>
+        <div class="hlegend">
+          <span><i style="background:#5b8cff"></i> Purchase</span>
+          <span><i style="background:#2f6fed"></i> The work</span>
+          <span><i style="background:#f59e0b"></i> Holding</span>
+          <span><i style="background:#16a34a"></i> Selling</span>
         </div>
-
-        <h3 class="form-section">The Money</h3>
-        <div class="form-grid">
-          <label class="full">How is this deal paid for?
-            <select id="pr-funding"></select>
-          </label>
-        </div>
-
-        <div id="pr-loan-fields">
-          <div class="form-grid">
-            <label class="full">Lender
-              <input type="text" id="pr-lender" placeholder="e.g. National Loan Funding LLC" />
-            </label>
-            <label>Total Note Amount ($)
-              <input type="number" id="pr-loan" step="0.01" min="0" value="0" />
-            </label>
-            <label>Construction Holdback ($)
-              <input type="number" id="pr-holdback" step="0.01" min="0" value="0" />
-            </label>
-          </div>
-          <p class="form-hint">
-            Funded at closing = note amount minus holdback. That funded amount counts
-            toward your all-in; the holdback only counts as you draw it.
-          </p>
-        </div>
-        <p class="form-hint hidden" id="pr-cash-hint">
-          Every dollar in this deal is your own, so the all-in is simply what you
-          have spent. Loan, draw and payoff figures are put away.
-        </p>
-
-        <h3 class="form-section">Partners <span class="form-sub">whose money is in this deal</span></h3>
-        <div id="pr-partners" class="partner-editor"></div>
-        <button type="button" id="pr-add-partner" class="btn btn-small">+ Add Partner</button>
-        <div class="form-grid">
-          <label>Preferred Return (% a year)
-            <input type="number" id="pr-pref" step="0.1" min="0" value="0" />
-          </label>
-          <p class="form-hint">
-            Equity percentages decide the upside only. At a sale every partner gets their
-            own money back first, then any preferred return on it, and only what is left
-            over is split by those percentages. Leave them all at zero to split in
-            proportion to what each person put in.
-          </p>
-        </div>
-
-        <h3 class="form-section">The Exit</h3>
-        <div class="form-grid">
-          <label>Sale Price ($)
-            <input type="number" id="pr-sale" step="0.01" min="0" placeholder="leave blank until sold" />
-          </label>
-          <label>Sale Date
-            <input type="date" id="pr-saledate" />
-          </label>
-          <label class="full">Notes
-            <textarea id="pr-notes" rows="2" placeholder="Anything worth remembering about this deal"></textarea>
-          </label>
-        </div>
-
-        <div class="modal-actions">
-          <button type="button" id="pr-delete" class="btn btn-danger hidden">Delete Project</button>
-          <div class="spacer"></div>
-          <button type="button" id="pr-cancel" class="btn">Cancel</button>
-          <button type="submit" class="btn btn-primary">Save Project</button>
-        </div>
-      </form>
-    </div>
-  </div>
-
-  <!-- Access / sharing modal -->
-  <div id="share-modal" class="modal-overlay hidden">
-    <div class="modal">
-      <h2>Who Has Access</h2>
-      <p class="modal-hint" id="share-project-name"></p>
-      <div id="member-list" class="member-list"></div>
-      <form id="share-form" class="share-form">
-        <div class="form-grid">
-          <label class="full">Add someone by the email they sign in with
-            <input type="email" id="sh-email" placeholder="partner@example.com" required />
-          </label>
-          <label class="full">Their role
-            <select id="sh-role"></select>
-          </label>
-        </div>
-        <p id="share-error" class="login-error hidden"></p>
-        <div class="modal-actions">
-          <button type="submit" class="btn btn-primary">Add Person</button>
-        </div>
-      </form>
-
-      <h3 class="form-section">Read-Only Links
-        <span class="form-sub">for a lender or investor with no account</span>
-      </h3>
-      <div id="link-list" class="link-list"></div>
-      <div class="link-new">
-        <div class="form-grid">
-          <label class="full">Who is it for
-            <input type="text" id="sl-label" placeholder="e.g. Ridgeline Capital" />
-          </label>
-          <label>Stops working after
-            <select id="sl-days">
-              <option value="7">7 days</option>
-              <option value="30" selected>30 days</option>
-              <option value="90">90 days</option>
-              <option value="0">never</option>
-            </select>
-          </label>
-          <div class="link-switches">
-            <label class="checkbox-field"><input type="checkbox" id="sl-budget" checked /> Budget vs actual</label>
-            <label class="checkbox-field"><input type="checkbox" id="sl-schedule" /> Schedule and finish date</label>
-            <label class="checkbox-field"><input type="checkbox" id="sl-ledger" /> Every line item</label>
-            <label class="checkbox-field"><input type="checkbox" id="sl-splits" /> Partner names and split</label>
-          </div>
-        </div>
-        <p class="form-hint">
-          Anyone holding the link can read it, so treat it like a password. Receipts,
-          notes, contractors and your access list are never included.
-        </p>
-        <button type="button" id="sl-create" class="btn">Create Link</button>
       </div>
-      <p id="sl-result" class="sl-result hidden"></p>
 
-      <div class="modal-actions">
-        <button type="button" id="share-close" class="btn">Done</button>
+      <div class="hcard-row">
+        <div class="hcard hcard-float hcard-ocr">
+          <div class="ocr-head"><span class="scan"></span> Receipt read</div>
+          <div class="ocr-row"><span>Amount</span><b>$1,284.60</b></div>
+          <div class="ocr-row"><span>Vendor</span><b>Prime Lumber Co</b></div>
+          <div class="ocr-row"><span>Category</span><b class="tag">Framing</b></div>
+        </div>
+
+        <div class="hcard-col">
+          <div class="hcard hcard-float hcard-profit">
+            <div class="hcard-label">Projected profit</div>
+            <div class="hcard-value sm pos" data-count="106360">$0</div>
+            <div class="hcard-sub">Sale $535,000 &minus; all&#8209;in</div>
+          </div>
+
+          <div class="hcard hcard-float hcard-off">
+            <svg viewBox="0 0 24 24" class="ico"><path d="M12 20h.01M4.9 12.1a10 10 0 0 1 14.2 0M1.4 8.6a15 15 0 0 1 21.2 0M8.4 15.6a5 5 0 0 1 7.2 0" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>
+            <div><b>3 changes queued</b><span>Will sync when you get signal</span></div>
+          </div>
+        </div>
       </div>
     </div>
   </div>
 
-  <!-- Sign-in modal -->
-  <div id="login-modal" class="modal-overlay hidden">
-    <div class="modal modal-sm">
-      <h2>Sign In</h2>
-      <p class="modal-hint">Sign in to load and sync your projects.</p>
-      <form id="login-form">
-        <div class="form-grid">
-          <label class="full">Email
-            <input type="email" id="l-email" autocomplete="username" required />
+  <div class="hero-marquee" aria-hidden="true">
+    <div class="marquee-track">
+      <span>Receipt OCR</span><span>&bull;</span><span>Budget variance</span><span>&bull;</span>
+      <span>Partner waterfall</span><span>&bull;</span><span>Critical path</span><span>&bull;</span>
+      <span>Lender draw requests</span><span>&bull;</span><span>1099 totals</span><span>&bull;</span>
+      <span>ALTA statement reader</span><span>&bull;</span><span>Read&#8209;only investor links</span><span>&bull;</span>
+      <span>Offline queue</span><span>&bull;</span>
+      <span>Receipt OCR</span><span>&bull;</span><span>Budget variance</span><span>&bull;</span>
+      <span>Partner waterfall</span><span>&bull;</span><span>Critical path</span><span>&bull;</span>
+      <span>Lender draw requests</span><span>&bull;</span><span>1099 totals</span><span>&bull;</span>
+      <span>ALTA statement reader</span><span>&bull;</span><span>Read&#8209;only investor links</span><span>&bull;</span>
+      <span>Offline queue</span><span>&bull;</span>
+    </div>
+  </div>
+</section>
+
+<!-- ======================= PROBLEM ======================= -->
+<section class="band band-light" id="problem">
+  <div class="wrap">
+    <p class="kicker">The spreadsheet stops working at deal two</p>
+    <h2 class="h2">You do not have a bookkeeping problem. You have a &ldquo;where does the deal actually stand, today&rdquo; problem.</h2>
+
+    <div class="prob-grid">
+      <article class="prob">
+        <span class="prob-n">01</span>
+        <h3>The number is always stale</h3>
+        <p>By the time the receipts are typed up on Sunday night, three more subs have been paid and a draw has landed. You are steering a $400k deal from a rear&#8209;view mirror.</p>
+      </article>
+      <article class="prob">
+        <span class="prob-n">02</span>
+        <h3>Nobody agrees what &ldquo;all&#8209;in&rdquo; means</h3>
+        <p>Does it include the loan? The draws? The carry? Double&#8209;count a draw once and your profit is wrong by five figures &mdash; and you will not find out until closing.</p>
+      </article>
+      <article class="prob">
+        <span class="prob-n">03</span>
+        <h3>The split turns into an argument</h3>
+        <p>Your partner put in more, earlier. There is a preferred return. Someone paid a sub in cash. At sale, nobody can reconstruct who is owed what without a weekend and a fight.</p>
+      </article>
+    </div>
+
+    <p class="prob-answer">
+      FlipSmart answers all three from one place, continuously, on the phone in your pocket.
+      <a href="#tour">See it run &rarr;</a>
+    </p>
+  </div>
+</section>
+
+<!-- ======================= THE TOUR ======================= -->
+<section class="band band-dark tour" id="tour">
+  <div class="grid-bg soft" aria-hidden="true"></div>
+  <div class="wrap">
+    <p class="kicker light">The full product, narrated</p>
+    <h2 class="h2 light">Watch FlipSmart run a whole deal &mdash; from contract to cheque</h2>
+    <p class="sub light">
+      Press play. A voice walks you through every screen while the app moves on its own.
+      Nine chapters, about four minutes. Jump to any chapter you like.
+    </p>
+
+    <div class="theatre">
+
+      <!-- Chapter rail -->
+      <aside class="chapters" aria-label="Tour chapters">
+        <div class="chapters-head">Chapters</div>
+        <ol class="chapter-list" id="chapter-list"></ol>
+        <div class="chapters-foot">
+          <label class="switch">
+            <input type="checkbox" id="voice-toggle" checked />
+            <span class="switch-ui" aria-hidden="true"></span>
+            <span class="switch-txt">Voice&#8209;over</span>
           </label>
-          <label class="full">Password
-            <input type="password" id="l-password" autocomplete="current-password" required />
-          </label>
+          <p class="voice-note" id="voice-note">Uses your device's built&#8209;in voice. No download.</p>
         </div>
-        <p id="login-error" class="login-error hidden"></p>
-        <div class="modal-actions">
-          <button type="submit" class="btn btn-primary">Sign In</button>
+      </aside>
+
+      <!-- Stage -->
+      <div class="stage-col">
+        <div class="stage" id="stage">
+          <div class="chrome">
+            <span class="dots"><i></i><i></i><i></i></span>
+            <span class="urlbar"><svg viewBox="0 0 24 24" class="ico"><path d="M7 11V8a5 5 0 0 1 10 0v3" fill="none" stroke="currentColor" stroke-width="2"/><rect x="4" y="11" width="16" height="10" rx="2" fill="none" stroke="currentColor" stroke-width="2"/></svg> flipsmart.app<span class="url-dim" id="url-path">/dashboard</span></span>
+            <span class="chrome-tag" id="chrome-tag">Dashboard</span>
+          </div>
+
+          <div class="screens" id="screens">
+
+            <!-- ---------- 1. DASHBOARD ---------- -->
+            <section class="screen" data-screen="dashboard">
+              <div class="s-port">
+                <div class="s-label">Total all&#8209;in across all projects</div>
+                <div class="s-big" data-count="1264800">$0</div>
+                <div class="s-sub">3 active deals &middot; $512,300 partner cash &middot; $752,500 funded</div>
+              </div>
+              <div class="s-alert" data-r="1">
+                <b>Heads up</b> &mdash; Vega Electric's certificate of insurance expires in 9 days.
+              </div>
+              <div class="s-cards3">
+                <div class="s-proj" data-r="2">
+                  <div class="s-proj-top"><b>42 Maple Street</b><span class="badge b-blue">In progress</span></div>
+                  <div class="s-proj-num">$428,640</div>
+                  <div class="s-proj-meta">Projected profit <b class="pos">+$106,360</b></div>
+                  <div class="s-meter"><i style="width:88%"></i></div>
+                  <div class="s-proj-foot">88% of budget used &middot; finishes 14 Oct</div>
+                </div>
+                <div class="s-proj" data-r="3">
+                  <div class="s-proj-top"><b>19 Grove Court</b><span class="badge b-amber">Closed</span></div>
+                  <div class="s-proj-num">$310,900</div>
+                  <div class="s-proj-meta">Projected profit <b class="pos">+$58,100</b></div>
+                  <div class="s-meter"><i style="width:31%"></i></div>
+                  <div class="s-proj-foot">31% of budget used &middot; work starts Monday</div>
+                </div>
+                <div class="s-proj warn" data-r="4">
+                  <div class="s-proj-top"><b>7 Harbour Row</b><span class="badge b-red">Over budget</span></div>
+                  <div class="s-proj-num">$525,260</div>
+                  <div class="s-proj-meta">Projected profit <b class="neg">&minus;$4,260</b></div>
+                  <div class="s-meter over"><i style="width:100%"></i></div>
+                  <div class="s-proj-foot">117% of budget used &middot; 2 phases late</div>
+                </div>
+              </div>
+            </section>
+
+            <!-- ---------- 2. RECEIPT / OCR ---------- -->
+            <section class="screen" data-screen="receipt">
+              <div class="s-head"><b>Add expense</b><span class="s-head-r">42 Maple Street</span></div>
+              <div class="s-split">
+                <div class="s-receipt" data-r="1">
+                  <div class="rcpt">
+                    <div class="rcpt-line w60"></div>
+                    <div class="rcpt-line w40 dim"></div>
+                    <div class="rcpt-rule"></div>
+                    <div class="rcpt-line w85 dim"></div>
+                    <div class="rcpt-line w70 dim"></div>
+                    <div class="rcpt-line w78 dim"></div>
+                    <div class="rcpt-rule"></div>
+                    <div class="rcpt-line w50 strong"></div>
+                    <span class="scanline"></span>
+                  </div>
+                  <button class="s-btn s-btn-primary">Read the receipt</button>
+                  <div class="s-conf">On&#8209;device OCR &middot; confidence 94%</div>
+                </div>
+                <div class="s-form">
+                  <div class="s-field" data-r="2"><span>Amount</span><b class="fill">$1,284.60</b></div>
+                  <div class="s-field" data-r="3"><span>Date</span><b class="fill">12 Aug 2026</b></div>
+                  <div class="s-field" data-r="4"><span>Payable to</span><b class="fill">Prime Lumber Co</b></div>
+                  <div class="s-field" data-r="5"><span>Category / phase</span><b class="fill tag">Framing &amp; Structural</b></div>
+                  <div class="s-field" data-r="6"><span>Cost type</span><b class="fill tag">Materials</b></div>
+                  <div class="s-field" data-r="7"><span>Contractor</span><b class="fill tag">Ridgeline Framing &mdash; matched</b></div>
+                  <div class="s-field" data-r="8"><span>Paid by</span><b class="fill">Dana R.</b></div>
+                  <div class="s-toast" data-r="9">Saved. Photo compressed 4.2&nbsp;MB &rarr; 210&nbsp;KB.</div>
+                </div>
+              </div>
+            </section>
+
+            <!-- ---------- 3. LEDGER ---------- -->
+            <section class="screen" data-screen="ledger">
+              <div class="s-head"><b>Expenses</b>
+                <span class="s-tools">
+                  <span class="s-pill on">Category / phase</span>
+                  <span class="s-pill">Cost type</span>
+                  <span class="s-pill">Paid by</span>
+                  <span class="s-pill ghost">Export CSV</span>
+                </span>
+              </div>
+              <div class="s-table">
+                <div class="s-grp" data-r="1">Demolition &amp; Debris <em>$14,300</em></div>
+                <div class="s-row" data-r="2"><span>02 Jul</span><span>Dumpster &times;3</span><span class="tag">Services</span><span>Dana R.</span><b>$2,850</b><i class="clip"></i></div>
+                <div class="s-row" data-r="3"><span>05 Jul</span><span>Interior strip&#8209;out crew</span><span class="tag">Labor</span><span>Marcus T.</span><b>$11,450</b><i class="clip"></i></div>
+                <div class="s-grp" data-r="4">Framing &amp; Structural <em>$61,780</em></div>
+                <div class="s-row" data-r="5"><span>18 Jul</span><span>Ridgeline Framing &mdash; draw 1</span><span class="tag">Labor</span><span>Dana R.</span><b>$38,000</b><i class="clip"></i></div>
+                <div class="s-row hot" data-r="6"><span>12 Aug</span><span>Prime Lumber Co</span><span class="tag">Materials</span><span>Dana R.</span><b>$1,284.60</b><i class="clip"></i></div>
+                <div class="s-grp" data-r="7">Kitchen &amp; Bath <em>$48,220</em></div>
+                <div class="s-row" data-r="8"><span>01 Aug</span><span>Cabinet package</span><span class="tag">Materials</span><span>Marcus T.</span><b>$21,900</b><i class="clip"></i></div>
+              </div>
+            </section>
+
+            <!-- ---------- 4. BUDGET ---------- -->
+            <section class="screen" data-screen="budget">
+              <div class="s-head"><b>Budget vs actual</b><span class="badge b-amber" data-r="1">Watch &middot; 2 categories</span></div>
+              <div class="s-budget">
+                <div class="s-brow" data-r="2">
+                  <span class="s-bname">Demolition &amp; Debris</span>
+                  <div class="s-btrack"><i class="ok" style="width:71%"></i></div>
+                  <span class="s-bnum">$14,300 <em>of $20,000</em></span>
+                  <span class="s-bvar pos">&minus;$5,700</span>
+                </div>
+                <div class="s-brow" data-r="3">
+                  <span class="s-bname">Framing &amp; Structural</span>
+                  <div class="s-btrack"><i class="warn" style="width:103%"></i></div>
+                  <span class="s-bnum">$61,780 <em>of $60,000</em></span>
+                  <span class="s-bvar warn">+$1,780</span>
+                </div>
+                <div class="s-brow" data-r="4">
+                  <span class="s-bname">MEP &mdash; mechanical, electrical, plumbing</span>
+                  <div class="s-btrack"><i class="bad" style="width:100%"></i></div>
+                  <span class="s-bnum">$77,400 <em>of $62,000</em></span>
+                  <span class="s-bvar neg">+$15,400</span>
+                </div>
+                <div class="s-brow" data-r="5">
+                  <span class="s-bname">Kitchen &amp; Bath</span>
+                  <div class="s-btrack"><i class="ok" style="width:64%"></i></div>
+                  <span class="s-bnum">$48,220 <em>of $75,000</em></span>
+                  <span class="s-bvar pos">&minus;$26,780</span>
+                </div>
+                <div class="s-brow" data-r="6">
+                  <span class="s-bname">Interior Finishes</span>
+                  <div class="s-btrack"><i class="ok" style="width:22%"></i></div>
+                  <span class="s-bnum">$8,900 <em>of $40,000</em></span>
+                  <span class="s-bvar pos">&minus;$31,100</span>
+                </div>
+              </div>
+              <div class="s-note" data-r="7">MEP is over your 10% variance threshold. Everything else is inside it.</div>
+            </section>
+
+            <!-- ---------- 5. PARTNERS / WATERFALL ---------- -->
+            <section class="screen" data-screen="split">
+              <div class="s-head"><b>Who takes home what</b><span class="s-head-r">Sale $535,000 &middot; all&#8209;in $428,640</span></div>
+              <div class="s-fall">
+                <div class="s-step" data-r="1"><span class="s-step-n">1</span><div><b>Capital back</b><em>Everyone's own money out first &mdash; $188,640</em></div></div>
+                <div class="s-step" data-r="2"><span class="s-step-n">2</span><div><b>Preferred return</b><em>8% a year, accrued per dollar from the day it went in &mdash; $9,412</em></div></div>
+                <div class="s-step" data-r="3"><span class="s-step-n">3</span><div><b>Upside</b><em>What is left, split by equity &mdash; $96,948</em></div></div>
+              </div>
+              <div class="s-table tight">
+                <div class="s-row head" data-r="4"><span>Partner</span><span>Contributed</span><span>Pref accrued</span><span>Profit share</span><b>Takes home</b></div>
+                <div class="s-row" data-r="5"><span>Dana R. <em>55%</em></span><span>$118,640</span><span>$6,010</span><span>$53,321</span><b>$177,971</b></div>
+                <div class="s-row" data-r="6"><span>Marcus T. <em>30%</em></span><span>$50,000</span><span>$2,480</span><span>$29,084</span><b>$81,564</b></div>
+                <div class="s-row" data-r="7"><span>Ivy Holdings <em>15%</em></span><span>$20,000</span><span>$922</span><span>$14,543</span><b>$35,465</b></div>
+                <div class="s-row tot" data-r="8"><span>Total</span><span>$188,640</span><span>$9,412</span><span>$96,948</span><b>$295,000</b></div>
+              </div>
+              <div class="s-note ok" data-r="9">Checks out: proceeds after loan payoff equal the sum of what everyone takes home.</div>
+            </section>
+
+            <!-- ---------- 6. SCHEDULE ---------- -->
+            <section class="screen" data-screen="schedule">
+              <div class="s-head"><b>Schedule</b><span class="badge b-red" data-r="1">1 phase late &middot; slip costs $214/day</span></div>
+              <div class="s-gantt">
+                <div class="s-gline" data-r="2"><span>Permits</span><i class="g done" style="--s:0%;--w:11%"></i></div>
+                <div class="s-gline" data-r="3"><span>Demolition</span><i class="g done" style="--s:11%;--w:9%"></i></div>
+                <div class="s-gline" data-r="4"><span>Framing</span><i class="g done crit" style="--s:20%;--w:16%"></i></div>
+                <div class="s-gline" data-r="5"><span>Roof &amp; exterior</span><i class="g run" style="--s:36%;--w:12%"></i></div>
+                <div class="s-gline" data-r="6"><span>Rough&#8209;in MEP</span><i class="g late crit" style="--s:36%;--w:18%"></i></div>
+                <div class="s-gline" data-r="7"><span>Drywall</span><i class="g block crit" style="--s:54%;--w:12%"></i></div>
+                <div class="s-gline" data-r="8"><span>Kitchen &amp; bath</span><i class="g wait" style="--s:66%;--w:14%"></i></div>
+                <div class="s-gline" data-r="9"><span>Flooring</span><i class="g wait" style="--s:80%;--w:9%"></i></div>
+                <div class="s-gline" data-r="10"><span>Final inspection</span><i class="g wait crit" style="--s:89%;--w:8%"></i></div>
+                <span class="s-today" data-r="4"><em>Today</em></span>
+              </div>
+              <div class="s-gkey" data-r="11">
+                <span><i class="k done"></i>Done</span><span><i class="k run"></i>Running</span>
+                <span><i class="k late"></i>Late</span><span><i class="k block"></i>Blocked</span>
+                <span><i class="k wait"></i>Waiting</span><span><i class="k crit"></i>Critical path</span>
+              </div>
+              <div class="s-note" data-r="12">Rough&#8209;in MEP is 6 days late and sits on the critical path, so the finish date moved to 14 Oct. Six days of holding cost is $1,284.</div>
+            </section>
+
+            <!-- ---------- 7. LOAN / DRAW ---------- -->
+            <section class="screen" data-screen="loan">
+              <div class="s-head"><b>Construction loan</b><span class="s-head-r">Meridian Capital &middot; note $300,000</span></div>
+              <div class="s-cards3 four">
+                <div class="s-mini" data-r="1"><span>Funded at closing</span><b>$240,000</b></div>
+                <div class="s-mini" data-r="2"><span>Draws taken</span><b>$41,500</b></div>
+                <div class="s-mini" data-r="3"><span>Holdback left</span><b>$18,500</b></div>
+                <div class="s-mini" data-r="4"><span>Payoff at sale</span><b>$281,500</b></div>
+              </div>
+              <div class="s-doc" data-r="5">
+                <div class="s-doc-head">Draw request #3 <em>ready to print</em></div>
+                <div class="s-doc-row"><span>Framing &amp; Structural</span><b>$9,240</b></div>
+                <div class="s-doc-row"><span>Roofing &amp; Exterior</span><b>$6,100</b></div>
+                <div class="s-doc-row"><span>MEP</span><b>$2,900</b></div>
+                <div class="s-doc-row tot"><span>Requested this draw</span><b>$18,240</b></div>
+                <div class="s-doc-foot">Itemised by category, every line receipted, certification and signature block included.</div>
+              </div>
+              <div class="s-note" data-r="6">A draw reimburses money you already spent, so it raises the lender payoff &mdash; it never gets added to all&#8209;in twice.</div>
+            </section>
+
+            <!-- ---------- 8. CONTRACTORS ---------- -->
+            <section class="screen" data-screen="crew">
+              <div class="s-head"><b>Contractors &amp; 1099s</b><span class="s-head-r">Across every project</span></div>
+              <div class="s-table">
+                <div class="s-row head" data-r="1"><span>Contractor</span><span>Trade</span><span>W&#8209;9</span><span>Insurance</span><b>Paid in 2026</b></div>
+                <div class="s-row" data-r="2"><span>Ridgeline Framing</span><span>Framing</span><span class="ok-t">On file</span><span class="ok-t">Current</span><b>$47,240</b></div>
+                <div class="s-row alert" data-r="3"><span>Vega Electric</span><span>Electrical</span><span class="ok-t">On file</span><span class="warn-t">Expires in 9 days</span><b>$28,900</b></div>
+                <div class="s-row alert" data-r="4"><span>Cedar Tile Co</span><span>Tiling</span><span class="bad-t">Missing</span><span class="ok-t">Current</span><b>$12,480</b></div>
+                <div class="s-row" data-r="5"><span>Nova Plumbing</span><span>Plumbing</span><span class="ok-t">On file</span><span class="ok-t">Current</span><b>$9,150</b></div>
+                <div class="s-row" data-r="6"><span>Handy Haul</span><span>Hauling</span><span class="ok-t">On file</span><span class="bad-t">Expired</span><b>$430</b></div>
+              </div>
+              <div class="s-note" data-r="7">Four are over the $600 threshold and need a 1099. Cedar Tile has no W&#8209;9 on file &mdash; chase it now, not in January. Materials are never counted.</div>
+            </section>
+
+            <!-- ---------- 9. SHARE / OFFLINE ---------- -->
+            <section class="screen" data-screen="share">
+              <div class="s-head"><b>Who sees what</b><span class="s-head-r">42 Maple Street</span></div>
+              <div class="s-two">
+                <div class="s-panel" data-r="1">
+                  <div class="s-panel-h">People with accounts</div>
+                  <div class="s-mrow"><b>you@yourcompany.com</b><span class="badge b-navy">Owner</span></div>
+                  <div class="s-mrow"><b>marcus@buildpartners.co</b><span class="badge b-blue">Editor</span></div>
+                  <div class="s-mrow"><b>books@yourcompany.com</b><span class="badge b-grey">Viewer</span></div>
+                  <div class="s-panel-note">Enforced by the database itself, not the browser.</div>
+                </div>
+                <div class="s-panel" data-r="2">
+                  <div class="s-panel-h">Read&#8209;only link for your lender</div>
+                  <div class="s-sw on"><i></i> Budget numbers</div>
+                  <div class="s-sw on"><i></i> Schedule</div>
+                  <div class="s-sw"><i></i> Expense descriptions</div>
+                  <div class="s-sw"><i></i> Partner names &amp; splits</div>
+                  <div class="s-link">flipsmart.app/#/share/8f3c&hellip;&nbsp; <em>expires in 30 days</em></div>
+                  <div class="s-panel-note">No account needed. Revoke and it dies instantly.</div>
+                </div>
+              </div>
+              <div class="s-offline" data-r="3">
+                <svg viewBox="0 0 24 24" class="ico"><path d="M12 20h.01M4.9 12.1a10 10 0 0 1 14.2 0M1.4 8.6a15 15 0 0 1 21.2 0M8.4 15.6a5 5 0 0 1 7.2 0" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>
+                <b>No signal in the basement.</b> 3 expenses and 5 photos are queued on the phone and go up the moment a bar appears &mdash; oldest first, in the right order.
+              </div>
+            </section>
+
+          </div>
+
+          <!-- caption -->
+          <div class="caption" id="caption" role="status" aria-live="polite"></div>
+          <button class="stage-play" id="stage-play" aria-label="Play the tour">
+            <svg viewBox="0 0 24 24"><path d="M8 5v14l11-7z" fill="currentColor"/></svg>
+            <span>Play the tour</span>
+          </button>
         </div>
-      </form>
-    </div>
-  </div>
 
-  <!-- Lender draw request -->
-  <div id="drawreq-modal" class="modal-overlay hidden">
-    <div class="modal modal-lg">
-      <h2>Lender Draw Request</h2>
-      <p class="modal-hint">
-        Everything spent on the work since your last draw is ticked. Untick anything
-        the lender will not reimburse, then print it or save it as a PDF.
-      </p>
-      <div class="drawreq-controls">
-        <label>Draw number
-          <input type="number" id="dr-number" min="1" step="1" />
-        </label>
-        <label>Request date
-          <input type="date" id="dr-date" />
-        </label>
-        <label class="drawreq-select-all">
-          <input type="checkbox" id="dr-all" checked /> Select all
-        </label>
-      </div>
-      <div id="drawreq-picker" class="drawreq-picker"></div>
-      <div class="drawreq-total">
-        <span>Amount requested</span>
-        <strong id="dr-total">$0.00</strong>
-      </div>
-      <p class="form-hint" id="dr-warning"></p>
-      <div class="modal-actions">
-        <button type="button" id="dr-cancel" class="btn">Close</button>
-        <button type="button" id="dr-print" class="btn btn-primary">Print / Save as PDF</button>
+        <!-- transport -->
+        <div class="transport" id="transport">
+          <button class="tp-btn" id="tp-prev" aria-label="Previous chapter"><svg viewBox="0 0 24 24"><path d="M18 5v14L7 12zM6 5h2v14H6z" fill="currentColor"/></svg></button>
+          <button class="tp-btn tp-play" id="tp-play" aria-label="Play"><svg viewBox="0 0 24 24" id="tp-icon"><path d="M8 5v14l11-7z" fill="currentColor"/></svg></button>
+          <button class="tp-btn" id="tp-next" aria-label="Next chapter"><svg viewBox="0 0 24 24"><path d="M6 5v14l11-7zM16 5h2v14h-2z" fill="currentColor"/></svg></button>
+          <div class="tp-bar"><div class="tp-fill" id="tp-fill"></div></div>
+          <span class="tp-time" id="tp-time">1 / 9</span>
+          <button class="tp-btn" id="tp-restart" aria-label="Start again"><svg viewBox="0 0 24 24"><path d="M12 5V2L7 6l5 4V7a5 5 0 1 1-5 5H5a7 7 0 1 0 7-7z" fill="currentColor"/></svg></button>
+        </div>
+        <p class="tour-hint">Prefer to read? Turn the voice&#8209;over off &mdash; every word is captioned under the screen.</p>
       </div>
     </div>
   </div>
+</section>
 
-  <!-- Printed output for the draw request. Hidden on screen, the only thing
-       visible on paper once body.printing-draw is set. -->
-  <div id="drawreq-doc" class="drawreq-doc" aria-hidden="true"></div>
+<!-- ======================= FEATURES ======================= -->
+<section class="band band-light" id="features">
+  <div class="wrap">
+    <p class="kicker">Everything in the box</p>
+    <h2 class="h2">Ten jobs, one app, no add&#8209;ons</h2>
+    <p class="sub">Nothing here is an upsell. Every project you create gets all of it.</p>
 
-  <!-- The scope of work: rename a phase, add one, drop one -->
-  <div id="category-modal" class="modal-overlay hidden">
-    <div class="modal modal-lg">
-      <h2 id="category-modal-title">Categories</h2>
-      <p class="form-hint" id="category-modal-blurb"></p>
+    <div class="feat-grid">
+      <article class="feat">
+        <span class="feat-ico blue"><svg viewBox="0 0 24 24"><path d="M4 4h11l5 5v11a1 1 0 0 1-1 1H5a1 1 0 0 1-1-1z" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round"/><path d="M8 13h8M8 17h5" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg></span>
+        <h3>Receipts that type themselves</h3>
+        <p>Photograph the receipt and FlipSmart reads the amount, the date and the vendor, guesses the phase from the vendor name, and matches it to a contractor you already know. All on the device &mdash; the image never goes to a third&#8209;party OCR service.</p>
+        <ul class="feat-list"><li>Tesseract OCR in the browser</li><li>Photos compressed to ~200&nbsp;KB</li><li>Multiple photos per expense</li></ul>
+      </article>
 
-      <div id="category-editor"></div>
+      <article class="feat">
+        <span class="feat-ico green"><svg viewBox="0 0 24 24"><path d="M12 3v18M17 7H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg></span>
+        <h3>One honest all&#8209;in number</h3>
+        <p>Partner cash out of pocket plus loan principal funded at closing. Draws are reimbursements, so they are never double&#8209;counted. It is on screen on every tab, because it is the only number that decides whether the deal works.</p>
+        <ul class="feat-list"><li>Split four ways: buy, build, hold, sell</li><li>Projected profit turns into final profit</li><li>Cash deals hide every loan field</li></ul>
+      </article>
 
-      <div class="cat-add">
-        <input type="text" id="cat-new-name" placeholder="New category name" />
-        <select id="cat-new-group" aria-label="Bucket"></select>
-        <select id="cat-new-costtype" aria-label="Usual cost type"></select>
-        <button type="button" id="cat-add-btn" class="btn btn-primary">+ Add</button>
+      <article class="feat">
+        <span class="feat-ico amber"><svg viewBox="0 0 24 24"><path d="M4 19h16M6 19V9m5 10V5m5 14v-7" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"/></svg></span>
+        <h3>Budget vs actual, per phase</h3>
+        <p>Set a budget line per phase, or leave it blank and it is tracked but never flagged. Pick your own variance threshold. The dashboard turns red before the deal does.</p>
+        <ul class="feat-list"><li>On budget &middot; watch &middot; over budget</li><li>Overrun projects surface on the portfolio</li><li>Rename, add or delete phases per project</li></ul>
+      </article>
+
+      <article class="feat">
+        <span class="feat-ico purple"><svg viewBox="0 0 24 24"><circle cx="9" cy="8" r="3.2" fill="none" stroke="currentColor" stroke-width="2"/><circle cx="17" cy="10" r="2.6" fill="none" stroke="currentColor" stroke-width="2"/><path d="M3 19a6 6 0 0 1 12 0M15.5 19a5 5 0 0 1 5.5-4.6" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg></span>
+        <h3>A profit waterfall that ends arguments</h3>
+        <p>Capital back first, then preferred return accrued per dollar from the day it was spent, then upside by equity. Every partner sees the same table, and it always balances to the proceeds.</p>
+        <ul class="feat-list"><li>Handles shortfalls proportionally</li><li>Flags unassigned spend</li><li>Partners need not have logins</li></ul>
+      </article>
+
+      <article class="feat">
+        <span class="feat-ico blue"><svg viewBox="0 0 24 24"><rect x="3" y="5" width="18" height="16" rx="2" fill="none" stroke="currentColor" stroke-width="2"/><path d="M3 10h18M8 3v4M16 3v4" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg></span>
+        <h3>A schedule that knows what matters</h3>
+        <p>Start from a typical twelve&#8209;phase rehab, then bend it to your job. FlipSmart runs a forward and backward pass, finds the critical path, and tells you what a slip actually costs in holding money per day.</p>
+        <ul class="feat-list"><li>Dependencies, slack and float</li><li>Circular dependencies caught by name</li><li>Live Gantt with a today line</li></ul>
+      </article>
+
+      <article class="feat">
+        <span class="feat-ico green"><svg viewBox="0 0 24 24"><path d="M3 7h18v12H3z" fill="none" stroke="currentColor" stroke-width="2"/><path d="M3 11h18M8 7V4h8v3" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg></span>
+        <h3>Draw requests the lender accepts</h3>
+        <p>Every reimbursable expense since your last draw, pre&#8209;ticked. Untick what will not fly, then print a properly itemised request with property, borrower, loan position, subtotals, certification and signature line.</p>
+        <ul class="feat-list"><li>Warns if you exceed the holdback</li><li>Warns on lines with no receipt</li><li>Prints or saves as PDF</li></ul>
+      </article>
+
+      <article class="feat">
+        <span class="feat-ico amber"><svg viewBox="0 0 24 24"><path d="M12 3 4 6v6c0 5 3.4 8.3 8 9 4.6-.7 8-4 8-9V6z" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round"/><path d="M9 12l2 2 4-4" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg></span>
+        <h3>Crew records that keep you clean</h3>
+        <p>One directory across every project. W&#8209;9 on file, insurance certificate expiry, licence expiry. FlipSmart warns you thirty days out and totals labour and services per contractor per year for 1099s.</p>
+        <ul class="feat-list"><li>$600 threshold flagged automatically</li><li>Materials correctly excluded</li><li>No full tax IDs stored</li></ul>
+      </article>
+
+      <article class="feat">
+        <span class="feat-ico purple"><svg viewBox="0 0 24 24"><path d="M13 3H7a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V9z" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round"/><path d="M13 3v6h6" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round"/></svg></span>
+        <h3>The paperwork, filed</h3>
+        <p>Contract, ALTA settlement statement, deed, loan docs, insurance, permits, inspections, bids, lien releases, listing. Eleven slots plus your own. And the settlement statement can be read straight into closing costs.</p>
+        <ul class="feat-list"><li>Private storage, signed links</li><li>PDF, images and Office files</li><li>ALTA and Closing Disclosure parsing</li></ul>
+      </article>
+
+      <article class="feat">
+        <span class="feat-ico blue"><svg viewBox="0 0 24 24"><path d="M10 13a5 5 0 0 0 7.5.5l3-3a5 5 0 0 0-7-7l-1.7 1.7" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"/><path d="M14 11a5 5 0 0 0-7.5-.5l-3 3a5 5 0 0 0 7 7l1.7-1.7" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg></span>
+        <h3>Share exactly as much as you mean to</h3>
+        <p>Owner, editor and viewer roles for people with accounts &mdash; enforced by the database, not by hiding buttons. For lenders and investors, a read&#8209;only link with four switches and an expiry date.</p>
+        <ul class="feat-list"><li>Show or hide ledger, splits, budget, schedule</li><li>7 days, 30 days or never</li><li>Revoking takes effect at once</li></ul>
+      </article>
+
+      <article class="feat">
+        <span class="feat-ico green"><svg viewBox="0 0 24 24"><path d="M12 20h.01M4.9 12.1a10 10 0 0 1 14.2 0M1.4 8.6a15 15 0 0 1 21.2 0M8.4 15.6a5 5 0 0 1 7.2 0" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg></span>
+        <h3>It works where the work is</h3>
+        <p>Basements, new builds with no drywall, rural lots. FlipSmart keeps writing to the phone and replays the queue oldest&#8209;first when signal comes back. Install it to the home screen and it opens like an app.</p>
+        <ul class="feat-list"><li>Durable offline write queue</li><li>Last good data cached per user</li><li>Installable on iOS and Android</li></ul>
+      </article>
+    </div>
+  </div>
+</section>
+
+<!-- ======================= THE MATH ======================= -->
+<section class="band band-tint" id="numbers">
+  <div class="wrap">
+    <p class="kicker">No hand&#8209;waving</p>
+    <h2 class="h2">The three calculations everything else hangs off</h2>
+
+    <div class="math-grid">
+      <article class="math">
+        <h3><span class="math-n">1</span> All&#8209;in</h3>
+        <div class="eq">
+          <span class="eq-t">Partner cash out of pocket</span>
+          <span class="eq-op">+</span>
+          <span class="eq-t">Loan principal funded at closing</span>
+          <span class="eq-op">=</span>
+          <span class="eq-r">Total all&#8209;in</span>
+        </div>
+        <p>Draws are deliberately absent. A draw hands back money already spent and already counted &mdash; adding it again is the single most common way a flip's profit gets overstated.</p>
+      </article>
+
+      <article class="math">
+        <h3><span class="math-n">2</span> Profit</h3>
+        <div class="eq">
+          <span class="eq-t">Sale price</span>
+          <span class="eq-op">&minus;</span>
+          <span class="eq-t">Total all&#8209;in</span>
+          <span class="eq-op">=</span>
+          <span class="eq-r">Profit</span>
+        </div>
+        <p>Labelled <em>projected</em> until you mark the deal sold, then it is simply the profit. Colour&#8209;coded, so a deal going underwater is obvious from the portfolio screen.</p>
+      </article>
+
+      <article class="math">
+        <h3><span class="math-n">3</span> The waterfall</h3>
+        <div class="eq eq-col">
+          <span class="eq-t">Capital back, pro rata if short</span>
+          <span class="eq-op">&darr;</span>
+          <span class="eq-t">Preferred return, accrued per dollar per day</span>
+          <span class="eq-op">&darr;</span>
+          <span class="eq-r">Upside, split by equity</span>
+        </div>
+        <p>If nobody set equity percentages, upside falls back to the proportion each partner actually funded. Equity over 100% is rejected before it can poison a distribution.</p>
+      </article>
+    </div>
+
+    <div class="stats">
+      <div class="stat"><b>15</b><span>default construction phases, all editable</span></div>
+      <div class="stat"><b>4</b><span>cost buckets: buy, build, hold, sell</span></div>
+      <div class="stat"><b>6</b><span>deal statuses, contract through sold</span></div>
+      <div class="stat"><b>3</b><span>access roles, enforced server&#8209;side</span></div>
+      <div class="stat"><b>&#8734;</b><span>projects, partners and receipts</span></div>
+    </div>
+  </div>
+</section>
+
+<!-- ======================= HOW IT WORKS ======================= -->
+<section class="band band-light" id="how">
+  <div class="wrap">
+    <p class="kicker">Getting going</p>
+    <h2 class="h2">Four steps, and you are ahead of your spreadsheet</h2>
+
+    <ol class="steps">
+      <li class="step">
+        <span class="step-n">1</span>
+        <h3>Open the deal</h3>
+        <p>Address, purchase price, settlement date, lender and holdback if there is one. Name your partners and their equity. Two minutes, once.</p>
+      </li>
+      <li class="step">
+        <span class="step-n">2</span>
+        <h3>Set the scope</h3>
+        <p>Take the fifteen standard phases or write your own, and put a budget against the ones you want watched. Pull the starter rehab schedule if you want a timeline too.</p>
+      </li>
+      <li class="step">
+        <span class="step-n">3</span>
+        <h3>Photograph receipts as they happen</h3>
+        <p>In the truck, at the counter, in the basement with no bars. FlipSmart reads them, files them and keeps the running total honest.</p>
+      </li>
+      <li class="step">
+        <span class="step-n">4</span>
+        <h3>Sell, and pay everyone correctly</h3>
+        <p>Enter the sale price. The waterfall produces the final table, the loan payoff is already known, and the 1099 totals are already counted.</p>
+      </li>
+    </ol>
+  </div>
+</section>
+
+<!-- ======================= TRUST ======================= -->
+<section class="band band-dark trust">
+  <div class="grid-bg soft" aria-hidden="true"></div>
+  <div class="wrap">
+    <p class="kicker light">Under the hood</p>
+    <h2 class="h2 light">Boring where it counts</h2>
+    <div class="trust-grid">
+      <div class="tcard">
+        <h3>Permissions live in the database</h3>
+        <p>Row level security decides what every query is allowed to return. A viewer cannot write, and a stranger cannot read, even with the browser console open.</p>
       </div>
-      <p class="form-hint" id="cat-error"></p>
-
-      <div class="modal-actions">
-        <button type="button" id="cat-restore" class="btn">Restore Missing Defaults</button>
-        <div class="spacer"></div>
-        <button type="button" id="cat-close" class="btn btn-primary">Done</button>
+      <div class="tcard">
+        <h3>Receipts and documents are private</h3>
+        <p>Files sit in private buckets and are only ever handed out as short&#8209;lived signed links, checked against your membership of that project.</p>
+      </div>
+      <div class="tcard">
+        <h3>Receipt reading never leaves the phone</h3>
+        <p>The OCR engine runs in your browser. No receipt image is shipped to an outside service to be read.</p>
+      </div>
+      <div class="tcard">
+        <h3>Losing signal is not losing data</h3>
+        <p>Only network failures queue. A permission or validation error tells you immediately, instead of silently pretending it saved.</p>
+      </div>
+      <div class="tcard">
+        <h3>No tax identity numbers stored</h3>
+        <p>W&#8209;9 status is a yes or no with an optional last four digits. FlipSmart does not want your subs' full identifiers and does not keep them.</p>
+      </div>
+      <div class="tcard">
+        <h3>Your data leaves with you</h3>
+        <p>Export the ledger to CSV whenever you like, print anything to PDF, and sign out to wipe the cached copy off that device.</p>
       </div>
     </div>
   </div>
+</section>
 
-  <!-- Filing a document against the project -->
-  <div id="doc-modal" class="modal-overlay hidden">
-    <div class="modal">
-      <h2 id="doc-modal-title">Add a Document</h2>
-      <label class="field">
-        <span>File</span>
-        <input type="file" id="doc-file" />
+<!-- ======================= FAQ ======================= -->
+<section class="band band-light" id="faq">
+  <div class="wrap narrow">
+    <p class="kicker">Straight answers</p>
+    <h2 class="h2">Questions people actually ask</h2>
+
+    <div class="faq">
+      <details><summary>Do I need a construction loan to use it?</summary><p>No. Flip a project to a cash deal and every loan field, the draw tracker and the payoff panel disappear. All&#8209;in becomes simply what the partners spent.</p></details>
+      <details><summary>Can my partner see the deal without me sending screenshots?</summary><p>Yes. Invite them by email as an editor or a viewer. If they should not have an account at all &mdash; a lender, say &mdash; generate a read&#8209;only link and choose which four things it reveals.</p></details>
+      <details><summary>What happens if I add an expense with no signal?</summary><p>It saves on the phone and shows in your totals right away. A bar at the top tells you exactly how many changes are waiting, and they upload in the correct order as soon as you have a connection.</p></details>
+      <details><summary>Is the receipt scanner accurate enough to trust?</summary><p>It gets you most of the way and shows its confidence, and every field stays editable. Treat it as fast typing rather than magic &mdash; you glance, correct if needed, and save.</p></details>
+      <details><summary>How is a preferred return calculated?</summary><p>Per dollar, per day. Each contribution accrues from the date it was actually spent through to the sale date, so a partner who funded in March is not treated the same as one who funded in September.</p></details>
+      <details><summary>Can I change the phase list?</summary><p>Yes, per project. Rename them, add trades you use, delete the ones you never touch, and set a default cost type for each so new expenses come pre&#8209;filled.</p></details>
+      <details><summary>Does it work on a phone?</summary><p>It is built for one. Add it to your home screen and it opens full screen with no browser bars, holds its own cache, and runs offline.</p></details>
+      <details><summary>What does it cost?</summary><p>Creating an account is free and there is no card required. Unlimited projects, partners and receipts.</p></details>
+    </div>
+  </div>
+</section>
+
+<!-- ======================= CTA ======================= -->
+<section class="band cta-band">
+  <div class="grid-bg soft" aria-hidden="true"></div>
+  <div class="wrap narrow center">
+    <h2 class="h2 light">Your next deal deserves a straight answer</h2>
+    <p class="sub light">Open an account, create the project, and photograph the first receipt today. Everything else follows from that.</p>
+    <div class="hero-cta center">
+      <button class="btn btn-primary btn-lg" data-auth="signup">Create your free account</button>
+      <button class="btn btn-outline btn-lg" data-auth="signin">I already have one</button>
+    </div>
+  </div>
+</section>
+
+</main>
+
+<footer class="foot">
+  <div class="wrap foot-in">
+    <div class="foot-brand">
+      <span class="logo-word">Flip<b>Smart</b></span>
+      <p>What a renovation has really cost, who paid for it, and when it will be finished.</p>
+    </div>
+    <nav class="foot-links" aria-label="Footer">
+      <a href="#tour">Product tour</a>
+      <a href="#features">Features</a>
+      <a href="#numbers">The math</a>
+      <a href="#faq">FAQ</a>
+      <a href="app.html">Open the app</a>
+    </nav>
+  </div>
+  <div class="wrap foot-fine">&copy; <span id="year">2026</span> FlipSmart. Figures shown throughout this page are illustrative.</div>
+</footer>
+
+<!-- ======================= AUTH ======================= -->
+<div class="auth-overlay hidden" id="auth-overlay">
+  <div class="auth-card" role="dialog" aria-modal="true" aria-labelledby="auth-title">
+    <button class="auth-x" id="auth-close" aria-label="Close">&times;</button>
+    <div class="auth-tabs" role="tablist">
+      <button class="auth-tab active" id="tab-signup" role="tab">Create account</button>
+      <button class="auth-tab" id="tab-signin" role="tab">Sign in</button>
+    </div>
+    <h2 id="auth-title">Start your first project</h2>
+    <p class="auth-hint" id="auth-hint">Free, no card. One account covers every deal you run.</p>
+    <form id="auth-form" novalidate>
+      <label class="fld">Email
+        <input type="email" id="auth-email" autocomplete="username" required placeholder="you@yourcompany.com" />
       </label>
-      <div class="form-grid">
-        <label class="field">
-          <span>What Is It</span>
-          <select id="doc-kind"></select>
-        </label>
-        <label class="field">
-          <span>Call It</span>
-          <input type="text" id="doc-name" placeholder="Executed purchase contract" />
-        </label>
-      </div>
-      <label class="field">
-        <span>Note <small>(optional)</small></span>
-        <input type="text" id="doc-note" placeholder="Signed 3/14, seller credit at line 506" />
+      <label class="fld">Password
+        <input type="password" id="auth-password" autocomplete="new-password" required minlength="8" placeholder="At least 8 characters" />
       </label>
-      <p class="form-hint" id="doc-error"></p>
-      <div class="modal-actions">
-        <button type="button" id="doc-cancel" class="btn">Cancel</button>
-        <div class="spacer"></div>
-        <button type="button" id="doc-save" class="btn btn-primary">Save</button>
-      </div>
-    </div>
+      <p class="auth-msg err hidden" id="auth-err"></p>
+      <p class="auth-msg ok hidden" id="auth-ok"></p>
+      <button type="submit" class="btn btn-primary btn-block" id="auth-submit">Create account</button>
+    </form>
+    <p class="auth-foot" id="auth-foot">Already have an account? <button type="button" class="linkish" data-auth="signin">Sign in</button></p>
   </div>
+</div>
 
-  <!-- What the settlement statement says, before any of it becomes an expense -->
-  <div id="alta-modal" class="modal-overlay hidden">
-    <div class="modal modal-lg">
-      <h2>What the Settlement Statement Says</h2>
-      <p class="form-hint" id="alta-blurb"></p>
-
-      <div class="alta-head">
-        <label class="field">
-          <span>Date These Land On</span>
-          <input type="date" id="alta-date" />
-        </label>
-        <label class="field">
-          <span>Paid By</span>
-          <select id="alta-partner"></select>
-        </label>
-      </div>
-
-      <div id="alta-price-offer" class="alta-offer hidden">
-        <label>
-          <input type="checkbox" id="alta-price-tick" checked />
-          <span id="alta-price-label"></span>
-        </label>
-      </div>
-
-      <div id="alta-lines"></div>
-      <p class="form-hint" id="alta-error"></p>
-
-      <div class="modal-actions">
-        <span class="alta-total" id="alta-total"></span>
-        <div class="spacer"></div>
-        <button type="button" id="alta-cancel" class="btn">Cancel</button>
-        <button type="button" id="alta-import" class="btn btn-primary">Add These</button>
-      </div>
-    </div>
-  </div>
-
-  <!-- Contractor directory and 1099s -->
-  <div id="contractor-modal" class="modal-overlay hidden">
-    <div class="modal modal-lg">
-      <h2>Contractors</h2>
-      <div class="tabs" role="tablist">
-        <button class="tab active" data-tab="directory">Directory</button>
-        <button class="tab" data-tab="tax">1099s</button>
-      </div>
-
-      <div id="tab-directory" class="tab-panel">
-        <div class="tab-toolbar">
-          <button id="add-contractor-btn" class="btn btn-primary">+ Add Contractor</button>
-          <span class="form-hint" id="directory-summary"></span>
-        </div>
-        <div id="contractor-list"></div>
-      </div>
-
-      <div id="tab-tax" class="tab-panel hidden">
-        <div class="tab-toolbar">
-          <label class="group-label">Tax year
-            <select id="tax-year"></select>
-          </label>
-          <div class="spacer"></div>
-          <button id="tax-export-btn" class="btn">Export CSV</button>
-        </div>
-        <div id="tax-list"></div>
-        <p class="form-hint" id="tax-note"></p>
-      </div>
-
-      <div class="modal-actions">
-        <button type="button" id="contractor-close" class="btn">Close</button>
-      </div>
-    </div>
-  </div>
-
-  <!-- Add / edit one contractor -->
-  <div id="contractor-edit-modal" class="modal-overlay hidden">
-    <div class="modal">
-      <h2 id="contractor-edit-title">Add Contractor</h2>
-      <form id="contractor-form">
-        <input type="hidden" id="c-id" />
-        <div class="form-grid">
-          <label>Name
-            <input type="text" id="c-name" required placeholder="Carlos Rivera" />
-          </label>
-          <label>Company
-            <input type="text" id="c-company" placeholder="Rivera Drywall LLC" />
-          </label>
-          <label>Trade
-            <input type="text" id="c-trade" placeholder="Drywall" />
-          </label>
-          <label>Phone
-            <input type="tel" id="c-phone" />
-          </label>
-          <label class="full">Email
-            <input type="email" id="c-email" />
-          </label>
-
-          <div class="form-section full">Compliance</div>
-          <label>Insurance (COI) expires
-            <input type="date" id="c-coi" />
-          </label>
-          <label>Licence expires
-            <input type="date" id="c-license-exp" />
-          </label>
-          <label>Licence number
-            <input type="text" id="c-license" />
-          </label>
-          <label class="checkbox-field">
-            <input type="checkbox" id="c-w9" /> W-9 on file
-          </label>
-          <label>Tax ID last 4
-            <input type="text" id="c-taxid" maxlength="4" inputmode="numeric" placeholder="1234" />
-          </label>
-          <p class="form-hint full">
-            Only the last four digits are kept. Never type a full SSN or EIN in here —
-            keep the W-9 itself somewhere built to hold it.
-          </p>
-
-          <label class="full">Notes
-            <textarea id="c-notes" rows="2"></textarea>
-          </label>
-        </div>
-        <div class="modal-actions">
-          <button type="button" id="c-delete" class="btn btn-danger">Delete</button>
-          <div class="spacer"></div>
-          <button type="button" id="c-cancel" class="btn">Cancel</button>
-          <button type="submit" class="btn btn-primary">Save</button>
-        </div>
-      </form>
-    </div>
-  </div>
-
-  <!-- Add / edit a phase of work -->
-  <div id="task-modal" class="modal-overlay hidden">
-    <div class="modal">
-      <h2 id="task-title">Add Phase</h2>
-      <form id="task-form" autocomplete="off">
-        <input type="hidden" id="t-id" />
-        <label class="field">
-          <span>Phase</span>
-          <input type="text" id="t-name" placeholder="Rough-in MEP" required />
-        </label>
-        <div class="form-grid">
-          <label class="field">
-            <span>Category</span>
-            <select id="t-category"></select>
-          </label>
-          <label class="field">
-            <span>Contractor</span>
-            <select id="t-contractor"></select>
-          </label>
-        </div>
-        <div class="form-grid">
-          <label class="field">
-            <span>How Many Days</span>
-            <input type="number" id="t-days" min="1" step="1" value="5" required />
-          </label>
-          <label class="field">
-            <span>Not Before <small>(optional)</small></span>
-            <input type="date" id="t-planned" />
-          </label>
-        </div>
-        <label class="field">
-          <span>Waits For</span>
-          <div id="t-deps" class="dep-list"></div>
-        </label>
-        <div class="form-grid">
-          <label class="field">
-            <span>Status</span>
-            <select id="t-status"></select>
-          </label>
-          <label class="field">
-            <span>Really Started</span>
-            <input type="date" id="t-actual-start" />
-          </label>
-          <label class="field">
-            <span>Really Finished</span>
-            <input type="date" id="t-actual-end" />
-          </label>
-        </div>
-        <label class="field">
-          <span>Notes</span>
-          <input type="text" id="t-notes" placeholder="Optional" />
-        </label>
-        <p class="form-hint">
-          Days are calendar days, weekends included. Leave "not before" empty and the
-          phase simply follows whatever it waits for.
-        </p>
-        <div class="modal-actions">
-          <button type="button" id="t-delete" class="btn btn-danger">Delete</button>
-          <div class="spacer"></div>
-          <button type="button" id="t-cancel" class="btn">Cancel</button>
-          <button type="submit" class="btn btn-primary">Save</button>
-        </div>
-      </form>
-    </div>
-  </div>
-
-  <!-- Receipt image viewer -->
-  <div id="lightbox" class="modal-overlay hidden">
-    <img id="lightbox-img" alt="Receipt" />
-  </div>
-
-  <footer class="footer">
-    Project Expense Tracker — synced to the cloud, on every device you sign in from.
-  </footer>
-
-  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.45.4/dist/umd/supabase.min.js"></script>
-  <script src="config.js"></script>
-  <script src="data.js"></script>
-  <script src="offline.js"></script>
-  <script src="ocr.js"></script>
-  <script src="alta.js"></script>
-  <script src="store.js"></script>
-  <script src="app.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.45.4/dist/umd/supabase.min.js"></script>
+<script src="config.js"></script>
+<script src="landing.js"></script>
 </body>
 </html>

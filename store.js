@@ -96,6 +96,14 @@ const Store = {
     if (error) throw error;
   },
 
+  // Returns true when the account is usable right away, false when Supabase is
+  // set to require an email confirmation before the first sign-in.
+  async signUp(email, password) {
+    const { data, error } = await this.client.auth.signUp({ email, password });
+    if (error) throw error;
+    return Boolean(data && data.session);
+  },
+
   async signOut() {
     await this.client.auth.signOut();
   },

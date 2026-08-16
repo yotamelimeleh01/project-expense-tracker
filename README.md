@@ -1,4 +1,4 @@
-# Project Expense Tracker
+# FlipSmart
 
 A live, multi-project expense tracker for real estate deals. Run several
 projects side by side, see what each one has cost you all-in, and share
@@ -8,6 +8,19 @@ Everything runs client-side (plain HTML/CSS/JS), so it hosts for free on
 GitHub Pages and works on any device with a browser.
 
 **Live app:** https://yotamelimeleh01.github.io/project-expense-tracker/
+
+## Two pages
+
+- `index.html` — the marketing landing page: what FlipSmart does, a narrated
+  nine-chapter product tour, and the sign-up / sign-in panel. Styles live in
+  `landing.css`, behaviour in `landing.js`.
+- `app.html` — the app itself. A deep link (`#/p/...`) or a stakeholder share
+  link (`#/share/...`) that lands on `index.html` is forwarded here
+  automatically, so old bookmarks keep working.
+
+The tour's voice-over uses the browser's own speech synthesis, so there is no
+audio file to ship and it still works offline. Every line is captioned, and the
+voice can be switched off.
 
 ## How it works
 

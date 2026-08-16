@@ -8,11 +8,14 @@
 //
 // Bump CACHE whenever the shell changes. Old caches are deleted on activate,
 // so a stale version cannot outlive a deploy.
-const CACHE = "pet-shell-v10";
+const CACHE = "pet-shell-v11";
 
 const SHELL = [
   "./",
   "./index.html",
+  "./landing.css",
+  "./landing.js",
+  "./app.html",
   "./styles.css",
   "./config.js",
   "./data.js",
@@ -110,9 +113,11 @@ self.addEventListener("fetch", (event) => {
   // signal the request simply fails and the app falls back to what it saved.
   if (isSupabase(url)) return;
 
-  // A deep link like #/p/xyz is still a request for index.html.
+  // A deep link like #/p/xyz is still a request for the page it came from.
+  // Two pages now: the landing at ./ and the app at ./app.html.
   if (req.mode === "navigate") {
-    event.respondWith(networkFirst(req, "./index.html"));
+    const page = url.pathname.endsWith("/app.html") ? "./app.html" : "./index.html";
+    event.respondWith(networkFirst(req, page));
     return;
   }
 

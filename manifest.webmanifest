@@ -1,8 +1,8 @@
 {
-  "name": "Project Expense Tracker",
-  "short_name": "Projects",
+  "name": "FlipSmart",
+  "short_name": "FlipSmart",
   "description": "What a renovation has really cost, who paid for it, and when it will be finished.",
-  "start_url": "./",
+  "start_url": "./app.html",
   "scope": "./",
   "display": "standalone",
   "orientation": "portrait-primary",

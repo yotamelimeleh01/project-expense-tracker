@@ -61,6 +61,25 @@ body {
 .btn-ghost:hover { background: rgba(255,255,255,0.12); }
 .modal-sm { max-width: 380px; }
 .modal-hint { margin: -6px 0 16px; font-size: 13px; color: var(--muted); }
+.btn-link {
+  background: none;
+  border: none;
+  color: var(--blue);
+  padding: 8px 0;
+  font-weight: 600;
+  text-decoration: underline;
+}
+.btn-link:hover { background: none; color: var(--navy-2); }
+#login-form .modal-actions { justify-content: space-between; align-items: center; }
+.login-note {
+  background: #f0fdf4;
+  border: 1px solid #bbf7d0;
+  color: #166534;
+  font-size: 13px;
+  padding: 8px 12px;
+  border-radius: 8px;
+  margin: 0 0 12px;
+}
 .login-error {
   background: #fef2f2;
   border: 1px solid #fecaca;

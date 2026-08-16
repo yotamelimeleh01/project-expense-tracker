@@ -1,5 +1,5 @@
 -- ---------------------------------------------------------------------------
--- Project Expense Tracker — Supabase schema
+-- FlipSmart — Supabase schema
 --
 -- Run this once in your Supabase project:
 --   Dashboard -> SQL Editor -> New query -> paste -> Run
